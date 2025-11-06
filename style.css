@@ -1,0 +1,110 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #16171C; /* RGB Preto: 22, 23, 28 */
+    color: #AFB1B0; /* RGB Cinza Claro: 175,177, 176 */
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    flex-direction: column; /* Para empilhar h1, button e p */
+}
+
+h1 {
+    color: #1081BA; /* RGB Azul: 16, 129, 186 */
+    text-align: center;
+}
+
+button {
+    background-color: #1081BA; /* RGB Azul */
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 20px; /* Adiciona um espaço acima do botão */
+}
+
+button:hover {
+    background-color: #0E6DA0; /* Um azul um pouco mais escuro para o hover */
+}
+
+#mensagem {
+    margin-top: 15px; /* Espaço acima da mensagem */
+    font-size: 18px;
+    font-weight: bold;
+    color: #AFB1B0; /* Cinza Claro */
+}
+
+h2 {
+    color: #1081BA; /* Azul */
+    margin-top: 30px;
+}
+
+input[type="text"] {
+    width: 300px;
+    padding: 10px;
+    margin-top: 10px;
+    border: 1px solid #0E6DA0; /* Um azul mais escuro para a borda */
+    border-radius: 5px;
+    background-color: #2D3038; /* Um cinza escuro para o fundo do campo */
+    color: white;
+    font-size: 16px;
+}
+
+input[type="text"]::placeholder {
+    color: #AFB1B0; /* Cinza claro para o placeholder */
+}
+
+input[type="text"]:focus {
+    outline: none;
+    border-color: #1081BA; /* Azul ao focar */
+    box-shadow: 0 0 5px rgba(16, 129, 186, 0.5); /* Sombra azul ao focar */
+}
+
+#exibirEntrada {
+    margin-top: 15px;
+    font-size: 17px;
+    color: #AFB1B0; /* Cinza Claro */
+    min-height: 20px; /* Garante que o espaço esteja reservado */
+}
+
+/* Estilo para a tarefa concluída */
+.concluida span {
+    text-decoration: line-through; /* Risca o texto */
+    color: #888; /* Muda a cor para um cinza mais claro */
+}
+
+li { /* Esta regra é importante! */
+    display: flex; /* Para alinhar o texto e o botão de exclusão */
+    justify-content: space-between; /* Espaça o texto e o botão */
+    align-items: center; /* Centraliza verticalmente */
+    background-color: #2D3038;
+    color: white;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+li span { /* Esta regra também é importante! */
+    flex-grow: 1; /* Permite que o texto ocupe o espaço disponível */
+    cursor: pointer; /* Indica que o texto é clicável */
+}
+
+.btn-excluir {
+    background: none; /* Remove o fundo padrão do botão */
+    border: none; /* Remove a borda */
+    color: white; /* Cor do texto/emoji do botão */
+    cursor: pointer;
+    font-size: 18px;
+    margin-left: 10px; /* Espaço entre o texto e o botão */
+    padding: 0; /* Remove padding extra */
+    line-height: 1; /* Ajusta a altura da linha para o emoji */
+}
+
+.btn-excluir:hover {
+    opacity: 0.7; /* Pequeno efeito ao passar o mouse */
+}
