@@ -41,7 +41,7 @@ class ANPAgent:
 
         # 4. Definir estimativas (mock, ou poderiam vir do LLM/outro agente AGP)
         # CORREÇÃO: Removido '\' para evitar SyntaxWarning
-        valor_estimado = f"R\${(proposal_id_counter * 15000 + random.randint(25000, 75000)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        valor_estimado = f"R${(proposal_id_counter * 15000 + random.randint(25000, 75000)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         prazo_estimado = f"{proposal_id_counter * 2 + random.randint(6, 12)} semanas"
 
         # 5. Criar objeto Proposal

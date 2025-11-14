@@ -1,0 +1,41 @@
+# Query: R\\$
+# ContextLines: 1
+
+10 results - 5 files
+
+anp_agent.py:
+  43          # CORREÇÃO: Removido '\' para evitar SyntaxWarning
+  44:         valor_estimado = f"R${(proposal_id_counter * 15000 + random.randint(25000, 75000)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+  45          prazo_estimado = f"{proposal_id_counter * 2 + random.randint(6, 12)} semanas"
+
+cognitolink.py:
+  101      with col10:
+  102:         estimated_value_str = f"R$ {total_estimated_value_approved_proposals:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+  103          st.metric(label="Valor Estimado Aprovado", value=estimated_value_str)
+
+  252              height=70,
+  253:             placeholder=r"Ex: Orçamento de R$X, prazo de 3 meses, deve ser em Python/Django."
+  254          )
+
+llm_simulator.py:
+  105              "valor_estimado, prazo_estimado, termos_condicoes. "
+  106:             "Garanta que o JSON seja válido. O valor estimado deve ser um string formatado como 'R\$ X.XXX,XX' e o prazo estimado como 'Y meses'. "
+  107              "Responda apenas com o objeto JSON."
+
+  119                  "tecnologias_sugeridas": llm_content.get("tecnologias_sugeridas", "Conteúdo não gerado pelo LLM."),
+  120:                 "valor_estimado": llm_content.get("valor_estimado", "R$ 0,00"),
+  121                  "prazo_estimado": llm_content.get("prazo_estimado", "0 meses"),
+
+  130                  "tecnologias_sugeridas": f"Erro LLM: {e}. Raw: {llm_raw_response[:200]}...",
+  131:                 "valor_estimado": "R$ 0,00",
+  132                  "prazo_estimado": "0 meses",
+
+venv/lib/python3.12/site-packages/streamlit/static/static/js/index.CmN3FXfI.js:
+  1550       * Open Source MIT License - http://threedubmedia.com/code/license
+  1551: ⟪ 12911 characters skipped ⟫$item$, $args$ = _args; ","_coreloop: ","for (var _i = 0, _il = _items.length; _i < _il; _i++) { ","$item$ = _items[_i]; ","$filter$; ","} ","return _retval; "].join("");Ut=(Ut=(Ut=Ut.replace(/\$filter\$/gi,It)).replace(/\$item\$/gi,Ze.params[0])).replace(/\$args\$/gi,Ze.params[1]);var Zt=new Function("_items,_args",Ut),b1="compiledFilter";return Zt.displayName=b1,Zt.name=mt(Zt,b1),Zt}(),i=function(){var Ze=nt(m),$e="{ continue _coreloop; }$1",Qt="{ _cache[_i] = true;_retval[_idx++] = $item$; continue _coreloop; }$1",It=Ze.body.replace(/return false\s*([;}]|\}|$)/gi,$e).replace(/return!1([;}]|\}|$)/gi,$e).replace(/return true\s*([;}]|\}|$)/gi,Qt).replace(/return!0([;}]|\}|$)/gi,Qt).replace(/return ([^;}]+?)\s*([;}]|$)/gi,"{ if ((_cache[_i] = $1)) { _retval[_idx++] = $item$; }; continue _coreloop; }$2"),Ut=["var _retval = [], _idx = 0; ","var $item$, $args$ = _args; ","_coreloop: ","for (var _i = 0, _il = _items.length; _i < _il; _i++) { ","$item$ = _items[_i]; ","if (_cache[_i]) { ","_retval[_idx++] = $item$; ","continue _coreloop; ","} ","$filter$; ","} ","return _retval; "].join("");Ut=(Ut=(Ut=Ut.replace(/\$filter\$/gi,It)).replace(/\$item\$/gi,Ze.params[0])).replace(/\$args\$/gi,Ze.params[1]);var Zt=new Function("_items,_args,_cache",Ut),b1="compiledFilterWithCaching";return Zt.displayName=b1,Zt.name=mt(Zt,b1),Zt}()),h1()},getFilter:function(){return m},getFilteredItems:function(){return x},sort:rt,fastSort:yt,reSort:function(){c?rt(c,y):T&&yt(T,y)},setGrouping:xt,getGrouping:function(){return k},groupBy:function(De,Ze,$e){xt(De!=null?{getter:De,formatter:Ze,comparer:$e}:[])},setAggregators:function(De,Ze){if(!k.length)throw new Error("At least one grouping must be specified before calling setAggregators().");k[0].aggregators=De,k[0].aggregateCollapsed=Ze,xt(k)},collapseAllGroups:function(De){Ht(De,!0)},expandAllGroups:function(De){Ht(De,!1)},collapseGroup:function(De){var Ze,$e,Qt=Array.prototype.slice.call(arguments),It=Qt[0];Qt.length===1&&It.indexOf(N)!==-1?(Ze=It,$e=It.split(N).length-1):(Ze=Qt.join(N),$e=Qt.length-1),dt($e,Ze,!0),me.notify({level:$e,groupingKey:Ze})},expandGroup:functio
+  1552   * Copyright (c) 2012 - 2022, Anaconda, Inc., and Bokeh Contributors
+
+venv/lib64/python3.12/site-packages/streamlit/static/static/js/index.CmN3FXfI.js:
+  1550       * Open Source MIT License - http://threedubmedia.com/code/license
+  1551: ⟪ 12911 characters skipped ⟫$item$, $args$ = _args; ","_coreloop: ","for (var _i = 0, _il = _items.length; _i < _il; _i++) { ","$item$ = _items[_i]; ","$filter$; ","} ","return _retval; "].join("");Ut=(Ut=(Ut=Ut.replace(/\$filter\$/gi,It)).replace(/\$item\$/gi,Ze.params[0])).replace(/\$args\$/gi,Ze.params[1]);var Zt=new Function("_items,_args",Ut),b1="compiledFilter";return Zt.displayName=b1,Zt.name=mt(Zt,b1),Zt}(),i=function(){var Ze=nt(m),$e="{ continue _coreloop; }$1",Qt="{ _cache[_i] = true;_retval[_idx++] = $item$; continue _coreloop; }$1",It=Ze.body.replace(/return false\s*([;}]|\}|$)/gi,$e).replace(/return!1([;}]|\}|$)/gi,$e).replace(/return true\s*([;}]|\}|$)/gi,Qt).replace(/return!0([;}]|\}|$)/gi,Qt).replace(/return ([^;}]+?)\s*([;}]|$)/gi,"{ if ((_cache[_i] = $1)) { _retval[_idx++] = $item$; }; continue _coreloop; }$2"),Ut=["var _retval = [], _idx = 0; ","var $item$, $args$ = _args; ","_coreloop: ","for (var _i = 0, _il = _items.length; _i < _il; _i++) { ","$item$ = _items[_i]; ","if (_cache[_i]) { ","_retval[_idx++] = $item$; ","continue _coreloop; ","} ","$filter$; ","} ","return _retval; "].join("");Ut=(Ut=(Ut=Ut.replace(/\$filter\$/gi,It)).replace(/\$item\$/gi,Ze.params[0])).replace(/\$args\$/gi,Ze.params[1]);var Zt=new Function("_items,_args,_cache",Ut),b1="compiledFilterWithCaching";return Zt.displayName=b1,Zt.name=mt(Zt,b1),Zt}()),h1()},getFilter:function(){return m},getFilteredItems:function(){return x},sort:rt,fastSort:yt,reSort:function(){c?rt(c,y):T&&yt(T,y)},setGrouping:xt,getGrouping:function(){return k},groupBy:function(De,Ze,$e){xt(De!=null?{getter:De,formatter:Ze,comparer:$e}:[])},setAggregators:function(De,Ze){if(!k.length)throw new Error("At least one grouping must be specified before calling setAggregators().");k[0].aggregators=De,k[0].aggregateCollapsed=Ze,xt(k)},collapseAllGroups:function(De){Ht(De,!0)},expandAllGroups:function(De){Ht(De,!1)},collapseGroup:function(De){var Ze,$e,Qt=Array.prototype.slice.call(arguments),It=Qt[0];Qt.length===1&&It.indexOf(N)!==-1?(Ze=It,$e=It.split(N).length-1):(Ze=Qt.join(N),$e=Qt.length-1),dt($e,Ze,!0),me.notify({level:$e,groupingKey:Ze})},expandGroup:functio
+  1552   * Copyright (c) 2012 - 2022, Anaconda, Inc., and Bokeh Contributors

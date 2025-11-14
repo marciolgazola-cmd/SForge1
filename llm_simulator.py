@@ -1,232 +1,314 @@
 # llm_simulator.py
-
+import time
 import random
+import uuid
 import json
-from typing import List, Dict # <-- Adicionado: Importar Dict e List de typing
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+
+from data_models import (
+    Proposal, Project, GeneratedCode, QualityReportEntry,
+    SecurityReportEntry, Documentation, MonitoringSummary, MOAILog, ChatMessage
+)
 
 class LLMSimulator:
     def __init__(self):
-        # Em uma implementação real, aqui você inicializaria o cliente para seu LLM local
-        # Ex: self.llm_client = LlamaClient(model_path="/path/to/mistral_model")
+        # No Ollama connection for now, just simulate output
         pass
 
-    def _generate_generic_response(self, prompt: str) -> str:
-        # Simulação simples de uma resposta de LLM
-        generic_responses = [
-            f"Entendido. Com base no seu prompt: '{prompt[:50]}...', estou processando a melhor resposta.",
-            f"Gerando conteúdo contextualizado para '{prompt[:40]}...' neste momento.",
-            f"Análise aprofundada do tópico '{prompt[:35]}...' em andamento. Resultado em breve.",
-            f"Considerando as nuances de '{prompt[:45]}...', formulando uma resposta detalhada.",
-        ]
-        return random.choice(generic_responses)
+    # --- Simulações para Geração de Propostas (ANP) ---
+    def generate_proposal_content(self, requirements: Dict[str, Any]) -> Dict[str, str]:
+        # Small delay to simulate LLM processing
+        time.sleep(random.uniform(0.5, 1.5))
+        
+        project_name = requirements.get('nome_projeto', 'Projeto Genérico')
+        client_name = requirements.get('nome_cliente', 'Cliente Desconhecido')
+        objetivos = requirements.get('objetivos_projeto', 'Melhorar eficiência e inovação.')
+        problema = requirements.get('problema_negocio', 'Problemas de sistema legados.')
 
-    def generate_proposal_content(self, req_data: Dict) -> Dict:
-        # Simula a geração de conteúdo de proposta pelo LLM
-        # Prompt real para o LLM seria algo como:
-        # "Gere um entendimento do problema, solução, escopo, tecnologias e termos para uma proposta comercial com base nos seguintes requisitos: {...}"
-        
-        # Simulação para ANP
-        problema = req_data['problema_negocio']
-        objetivos = req_data['objetivos_projeto']
-        funcionalidades = req_data['funcionalidades_esperadas']
-        restricoes = req_data['restricoes']
-        cliente = req_data['nome_cliente']
-        projeto = req_data['nome_projeto']
+        problem_understanding = f"""
+        **Análise Aprofundada (ARA):**
 
-        entendimento = (
-            f"O desafio central de '{cliente}' com o projeto '{projeto}' é: {problema}. "
-            f"A Synapse Forge compreende a profundidade desta questão e a necessidade "
-            "de uma abordagem estratégica para superá-la, alinhada com as expectativas de mercado e as capacidades internas do cliente."
-        )
-        solucao = (
-            f"Nossa proposta de solução é um sistema robusto e modular, focado em '{objetivos}'. "
-            f"Ele incorporará funcionalidades chave como {funcionalidades}. A arquitetura "
-            "será desenhada para escalabilidade e manutenção futura, garantindo a longevidade do investimento."
-        )
-        escopo = [
-            f"Desenvolvimento das funcionalidades descritas para atingir '{objetivos}'",
-            "Implementação de uma interface de usuário intuitiva e responsiva",
-            "Integração com sistemas existentes (se aplicável)",
-            "Realização de testes de unidade, integração e aceite",
-            "Deploy em ambiente de produção e configuração inicial"
-        ]
-        if restricoes:
-            escopo.append(f"A solução considerará as restrições informadas, como: {restricoes}.")
-        
-        tecnologias = random.choice([
-            ["Python (Django/FastAPI)", "React/Next.js", "PostgreSQL", "Docker/Kubernetes", "AWS Lambda"],
-            ["Node.js (Express)", "Vue.js", "MongoDB", "GCP Cloud Functions", "Serverless Framework"],
-            ["Java (Spring Boot)", "Angular", "MySQL", "Azure App Service", "Kafka"]
-        ])
-        
-        termos = (
-            "Esta proposta comercial é um rascunho e requer aprovação formal. "
-            "O prazo e o valor são estimativas e podem ser ajustados após análise detalhada. "
-            "A propriedade intelectual do código desenvolvido pertence à Synapse Forge até a liquidação final."
-        )
+        O cliente **{client_name}** busca resolver o desafio de:
+        *   **{problema}**
+        *   Observa-se a necessidade de modernização e otimização de processos, atualmente impactados por [mencionar dores específicas, ex: ineficiências operacionais, falta de escalabilidade].
+
+        A compreensão do problema aponta para uma lacuna em [áreas específicas, ex: automatização de tarefas, integração de sistemas], que impede o alcance dos objetivos de [citar objetivos, ex: redução de custos, melhoria na experiência do usuário].
+        """
+
+        solution_proposal = f"""
+        **Proposta de Solução (AAD):**
+
+        Propomos a implementação de um sistema [tipo de sistema, ex: web-based, mobile-first] com arquitetura de microsserviços, utilizando [tecnologia primária, ex: Python/FastAPI, Node.js/React].
+
+        A solução focará em:
+        1.  Desenvolvimento de um módulo de [funcionalidade chave, ex: gestão de inventário] com interface intuitiva.
+        2.  Integração com [sistemas existentes, ex: ERP, CRM] para garantir fluxo de dados contínuo.
+        3.  Implementação de funcionalidades de [funcionalidade secundária, ex: relatórios analíticos em tempo real] para suporte à decisão.
+        """
+
+        scope = f"""
+        **Escopo Detalhado (AAD):**
+
+        O escopo inclui:
+        *   **Fase 1: Levantamento e Planejamento (2 semanas)**
+            *   Workshops com stakeholders, detalhamento de requisitos.
+        *   **Fase 2: Desenvolvimento do Backend (6 semanas)**
+            *   APIs RESTful, banco de dados (PostgreSQL/MongoDB).
+        *   **Fase 3: Desenvolvimento do Frontend (5 semanas)**
+            *   Interface responsiva, componentes reutilizáveis.
+        *   **Fase 4: Testes e Homologação (3 semanas)**
+            *   Testes de unidade, integração, aceitação do usuário.
+        *   **Fase 5: Implantação e Treinamento (1 semana)**
+            *   Go-live, suporte inicial.
+
+        **Não Inclui:** [Excluir funcionalidades específicas se necessário, ex: manutenção de hardware existente, integrações não especificadas].
+        """
+
+        technologies_suggested = f"""
+        **Tecnologias Sugeridas (AAD/MOAI):**
+
+        *   **Backend:** Python 3.10+, FastAPI, SQLAlchemy, PostgreSQL.
+        *   **Frontend:** React 18+, TypeScript, Material-UI.
+        *   **Infraestrutura:** Docker, Kubernetes (opcional, para escalabilidade), AWS/Azure (EC2, RDS).
+        *   **CI/CD:** GitHub Actions / GitLab CI.
+        *   **Controle de Versão:** Git.
+        """
+
+        estimated_value = f"R$ {random.randint(50000, 200000):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') # Format as Brazilian currency
+        estimated_time = f"{random.randint(12, 20)} semanas" # in weeks
+
+        terms_conditions = f"""
+        **Termos e Condições (MOAI):**
+
+        *   **Validade da Proposta:** 30 dias a partir da data de emissão.
+        *   **Condições de Pagamento:** 30% na aprovação, 40% na entrega do MVP, 30% na homologação final.
+        *   **Suporte Pós-Implantação:** 30 dias de garantia contra defeitos de código. Suporte estendido via contrato SLA separado.
+        *   **Propriedade Intelectual:** Todo o código-fonte desenvolvido será de propriedade do cliente após a quitação total do projeto.
+        *   **Reajuste:** Valores e prazos podem ser reavaliados em caso de mudança de escopo.
+        """
 
         return {
-            "entendimento_problema": entendimento,
-            "solucao_proposta": solucao,
-            "escopo": escopo,
-            "tecnologias_sugeridas": tecnologias,
-            "termos_condicoes": termos
+            "title": f"Proposta para {project_name} - {client_name}",
+            "description": f"Desenvolvimento de uma solução para {problema} com foco em {objetivos}.",
+            "problem_understanding_moai": problem_understanding,
+            "solution_proposal_moai": solution_proposal,
+            "scope_moai": scope,
+            "technologies_suggested_moai": technologies_suggested,
+            "estimated_value_moai": estimated_value,
+            "estimated_time_moai": estimated_time,
+            "terms_conditions_moai": terms_conditions
         }
+    
+    # --- Simulações para Geração de Código (ADE-X) ---
+    def generate_code(self, project_description: str, filename: str, language: str) -> str:
+        time.sleep(random.uniform(0.5, 1.0))
+        
+        # Helper to create a valid JavaScript component name (PascalCase, no hyphens)
+        def get_js_component_name(file_name):
+            name_without_ext = file_name.replace('.js', '').replace('.jsx', '')
+            return ''.join(word.capitalize() for word in name_without_ext.split('-')).replace('_', '') # Also remove underscores
 
-    def generate_code_snippets(self, project_name: str, requirements: Dict) -> List[Dict]:
-        # Simula a geração de código pelo LLM
-        # Prompt real para o LLM seria algo como:
-        # "Gere código Python para um backend Flask, JavaScript para um frontend React e Terraform para infraestrutura AWS,
-        #  baseado no projeto '{project_name}' e requisitos: {...}"
-
-        backend_code = f"""
-# {project_name.replace(' ', '_').lower()}_backend.py
-# Gerado por ADE-X (Simulação LLM) para o projeto '{project_name}'
-# Requisitos: {requirements['funcionalidades_esperadas']}
+        if language == "Python":
+            if "flask" in project_description.lower():
+                return f"""# {filename}
+# Simulando código Python (Flask) para: {project_description}
 
 from flask import Flask, jsonify, request
-import datetime
 
 app = Flask(__name__)
 
-# Simulação de um repositório de dados para '{project_name}'
-data_store = []
-
-@app.route('/{project_name.lower().replace(' ', '-')}/data', methods=['GET'])
+@app.route('/api/data', methods=['GET'])
 def get_data():
-    return jsonify(data_store)
+    return jsonify({{"message": "Dados do projeto {project_description} via Flask!"}})
 
-@app.route('/{project_name.lower().replace(' ', '-')}/data', methods=['POST'])
-def add_data():
-    item = request.json.get('item')
-    if not item:
-        return jsonify({{"error": "'item' is required"}}), 400
-    
-    new_entry = {{'id': len(data_store) + 1, 'item': item, 'created_at': datetime.datetime.now().isoformat()}}
-    data_store.append(new_entry)
-    return jsonify(new_entry), 201
+@app.route('/api/data', methods=['POST'])
+def post_data():
+    data = request.json
+    return jsonify({{"message": f"Dados recebidos para {project_description}: {{data}}", "status": "success"}})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
-
+    app.run(debug=True)
 """
-        frontend_code = f"""
-// {project_name.replace(' ', '_').lower()}_frontend.js
-// Gerado por ADE-X (Simulação LLM) para o projeto '{project_name}'
-// Requisitos: {requirements['funcionalidades_esperadas']}
+            elif "react" in project_description.lower():
+                component_name = get_js_component_name(filename)
+                return f"""// {filename}
+// Simulando código JavaScript (React Component) para: {project_description}
 
-import React, {{ useState, useEffect }} from 'react';
-import axios from 'axios';
+import React from 'react';
 
-function {project_name.replace(' ', '')}App() {{
-    const [items, setItems] = useState([]);
-    const [newItem, setNewItem] = useState('');
-    const apiUrl = '/{project_name.lower().replace(' ', '-')}/data'; // Backend simulado
-
-    useEffect(() => {{
-        axios.get(apiUrl).then(response => {{
-            setItems(response.data);
-        }});
-    }}, []);
-
-    const handleAddItem = () => {{
-        axios.post(apiUrl, {{ item: newItem }}).then(response => {{
-            setItems([...items, response.data]);
-            setNewItem('');
-        }});
-    }};
-
-    return (
-        <div>
-            <h1>{project_name} Frontend</h1>
-            <input 
-                type="text" 
-                value={{newItem}} 
-                onChange={{e => setNewItem(e.target.value)}} 
-                placeholder="Adicionar novo item" 
-            />
-            <button onClick={{handleAddItem}}>Adicionar</button>
-            <ul>
-                {{items.map(item => (
-                    <li key={{item.id}}>{{item.item}} ({{new Date(item.created_at).toLocaleDateString()}})</li>
-                ))}}
-            </ul>
-        </div>
-    );
+function {component_name}() {{
+  return (
+    <div>
+      <h1>Componente React para {project_description}</h1>
+      <p>Este é um componente simulado para demonstração.</p>
+      <button onClick={{() => alert('Botão clicado!')}}>Clique-me</button>
+    </div>
+  );
 }}
 
-export default {project_name.replace(' ', '')}App;
+export default {component_name};
 """
-        infra_code = f"""
-# {project_name.replace(' ', '_').lower()}_infra.tf
-# Gerado por ADE-X (Simulação LLM) para o projeto '{project_name}'
-# Baseado nas restrições: {requirements['restricoes']}
+            else:
+                return f"""# {filename}
+# Simulando código Python genérico para: {project_description}
 
-provider "aws" {{
-  region = "us-east-1" # Região padrão, ajustável via MOAI/AID
-}}
+def hello_{project_description.replace(' ', '_').lower()}():
+    return f"Olá do {filename}! Seu projeto é sobre: {project_description}"
 
-resource "aws_instance" "{project_name.lower().replace(' ', '_')}_web_server" {{
-  ami           = "ami-0abcdef1234567890" # Ubuntu 22.04 LTS (exemplo)
-  instance_type = "t2.micro"
-  tags = {{
-    Name        = "{project_name} Web Server"
-    Environment = "Development" # Ou "Production" dependendo da fase
-    ManagedBy   = "SynapseForge-AID"
-  }}
-}}
-
-resource "aws_s3_bucket" "{project_name.lower().replace(' ', '_')}_data_bucket" {{
-  bucket = "{project_name.lower().replace(' ', '-')}-data-bucket-{random.randint(1000,9999)}"
-  acl    = "private"
-
-  tags = {{
-    Name        = "{project_name} Data Storage"
-    ManagedBy   = "SynapseForge-AID"
-  }}
-}}
+if __name__ == "__main__":
+    print(hello_{project_description.replace(' ', '_').lower()}())
 """
-        return [
-            {"filename": f"{project_name.replace(' ', '_').lower()}_backend.py", "language": "python", "content": backend_code},
-            {"filename": f"{project_name.replace(' ', '_').lower()}_frontend.js", "language": "javascript", "content": frontend_code},
-            {"filename": f"{project_name.replace(' ', '_').lower()}_infra.tf", "language": "terraform", "content": infra_code},
-        ]
-    
-    def generate_moai_response(self, user_message: str) -> str:
-        # Simula a resposta do MOAI para o chat
-        # Prompt real para o LLM seria:
-        # "O usuário CVO enviou a seguinte mensagem: '{user_message}'. Qual seria uma resposta apropriada do MOAI,
-        #  considerando que ele é um orquestrador de IA?"
-        responses = [
-            f"Compreendido, CVO. Analisando sua solicitação sobre '{user_message[:30]}...' e direcionando para os agentes relevantes.",
-            f"Minha análise indica a necessidade de {random.choice(['otimização de recursos', 'aprovação de um plano', 'intervenção de um agente'])} para '{user_message[:25]}...'.",
-            f"Recebida sua diretriz sobre '{user_message[:35]}...'. O processamento está em andamento com alta prioridade.",
-            f"Para '{user_message[:40]}...', estou formulando uma estratégia. Previsão de conclusão em breve.",
-        ]
-        return random.choice(responses)
+        elif language == "JavaScript":
+            return f"""// {filename}
+// Simulando código JavaScript para: {project_description}
 
-    # --- MÉTODO PARA INTEGRAÇÃO REAL DE LLM ---
-    def call_real_llm(self, prompt: str, model_name: str = "mistral_local"):
-        """
-        Este método seria o ponto de integração para chamar seu LLM local.
-        Você precisaria de um servidor de inferência rodando o Mistral (ex: com Ollama, Llama.cpp, ou um endpoint Flask).
-        
-        Exemplo com `requests` para um servidor local (Flask/Ollama):
-        import requests
-        url = "http://localhost:11434/api/generate" # Exemplo para Ollama
-        headers = {{"Content-Type": "application/json"}}
-        data = {
-            "model": model_name,
-            "prompt": prompt,
-            "stream": False
+function runProjectLogic() {{
+    console.log("Executando lógica JavaScript para: {project_description}");
+    // Exemplo de lógica simples
+    let data = {{"status": "online", "version": "1.0"}};
+    return data;
+}}
+
+runProjectLogic();
+"""
+        elif language == "SQL":
+            return f"""-- {filename}
+-- Simulando SQL para: {project_description}
+
+CREATE TABLE IF NOT EXISTS {project_description.replace(' ', '_').lower()}_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    value TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO {project_description.replace(' ', '_').lower()}_data (name, value) VALUES ('Exemplo 1', 'Valor para {project_description}');
+SELECT * FROM {project_description.replace(' ', '_').lower()}_data;
+"""
+        else:
+            return f"""# {filename}
+# Código genérico para: {project_description} em {language}
+# Nenhuma simulação específica disponível para esta linguagem.
+"""
+
+    # --- Simulações para Geração de Relatórios de Qualidade (AQT) ---
+    def generate_quality_report(self, project_description: str) -> Dict[str, Any]:
+        time.sleep(random.uniform(0.5, 1.0))
+        return {
+            "status": random.choice(["Concluído", "Em Análise", "Falha nos Testes"]),
+            "total_tests": random.randint(100, 500),
+            "passed_tests": random.randint(70, 95), # Percentage
+            "failed_tests": random.randint(5, 30), # Percentage
+            "code_coverage": f"{random.randint(70, 99)}%",
+            "stability": random.choice(["Alta", "Média", "Baixa"]),
+            "average_test_execution_time_seconds": round(random.uniform(0.5, 5.0), 2),
+            "recommendations": [
+                "Aumentar cobertura de testes para módulos críticos.",
+                "Otimizar tempo de execução de testes de integração.",
+                "Revisar falhas recorrentes no módulo X."
+            ],
+            "last_update": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "details_llm": f"""
+                O relatório de qualidade para o projeto "{project_description}" indica uma cobertura de testes sólida e boa estabilidade geral. No entanto, foram identificadas falhas em [módulo ou área específica] que merecem atenção para manter a alta qualidade do produto. A otimização contínua dos testes pode reduzir ainda mais o tempo de feedback do ciclo de desenvolvimento.
+            """
         }
-        try:
-            response = requests.post(url, headers=headers, json=data)
-            response.raise_for_status() # Levanta exceção para erros HTTP
-            return response.json()['response'] # Ajuste conforme a estrutura da resposta do seu servidor
-        except requests.exceptions.RequestException as e:
-            print(f"Erro ao chamar LLM local: {e}")
-            return self._generate_generic_response(prompt) # Retorna uma resposta simulada em caso de falha
-        """
-        # Por enquanto, retornamos a simulação
-        return self._generate_generic_response(prompt)
+
+    # --- Simulações para Geração de Relatórios de Segurança (ASE) ---
+    def generate_security_report(self, project_description: str) -> Dict[str, Any]:
+        time.sleep(random.uniform(0.5, 1.0))
+        return {
+            "status": random.choice(["Seguro", "Com Avisos", "Vulnerabilidades Críticas"]),
+            "overall_risk": random.choice(["Baixo", "Médio", "Alto"]),
+            "vulnerabilities": {
+                "critical": random.randint(0, 2),
+                "high": random.randint(0, 5),
+                "medium": random.randint(0, 10),
+                "low": random.randint(5, 20)
+            },
+            "compliance_status": random.choice(["Conforme GDPR/LGPD", "Requer Ajustes", "Não Conforme"]),
+            "last_scan": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "recommendations": [
+                "Aplicar patches de segurança críticos imediatamente.",
+                "Revisar configurações de firewall e grupos de segurança.",
+                "Implementar MFA para acesso administrativo."
+            ],
+            "details_llm": f"""
+                A análise de segurança para o projeto "{project_description}" revelou um risco geral {random.choice(["Baixo", "Médio"])}. Embora algumas vulnerabilidades {random.choice(["menores", "médias"])} tenham sido identificadas, não há ameaças críticas imediatas. Recomenda-se a revisão periódica e a aplicação de boas práticas de segurança, especialmente em [áreas específicas, ex: tratamento de dados sensíveis].
+            """
+        }
+
+    # --- Simulações para Geração de Documentação (ADO) ---
+    def generate_documentation(self, project_description: str, project_requirements: Dict[str, Any]) -> Dict[str, str]:
+        time.sleep(random.uniform(0.5, 1.5))
+        
+        doc_content = f"""# Documentação do Projeto: {project_description}
+
+## Visão Geral
+
+Este documento detalha a arquitetura, funcionalidades e diretrizes de uso do projeto. O objetivo principal é **{project_requirements.get('objetivos_projeto', 'N/A')}**, abordando o problema de **{project_requirements.get('problema_negocio', 'N/A')}** para o cliente **{project_requirements.get('nome_cliente', 'N/A')}**.
+
+## Requisitos Iniciais do Cliente
+
+### Problema de Negócio
+{project_requirements.get('problema_negocio', 'N/A')}
+
+### Objetivos do Projeto
+{project_requirements.get('objetivos_projeto', 'N/A')}
+
+### Funcionalidades Esperadas
+{project_requirements.get('funcionalidades_esperadas', 'Nenhuma detalhada.')}
+
+### Restrições
+{project_requirements.get('restricoes', 'Nenhuma.')}
+
+## Arquitetura da Solução
+
+[Diagrama ou descrição da arquitetura. Ex: Microsserviços, componentes, fluxos de dados.]
+
+## Tecnologias Utilizadas
+
+*   **Backend:** Python, FastAPI, PostgreSQL
+*   **Frontend:** React, TypeScript
+*   **Infraestrutura:** Docker, AWS EC2
+
+## Guia de Implantação
+
+1.  Clone o repositório: `git clone [URL_DO_REPO]`
+2.  Configure variáveis de ambiente.
+3.  Execute o script de deploy: `./deploy.sh`
+
+## Guia de Uso
+
+[Instruções detalhadas para usuários finais ou desenvolvedores.]
+
+## Changelog
+
+*   **Versão 1.0.0 (Data):** Lançamento inicial.
+*   **Versão 1.0.1 (Data):** Correções de bugs e melhorias de performance.
+"""
+        return {
+            "filename": f"documentacao_{project_description.replace(' ', '_').lower()}.md",
+            "content": doc_content,
+            "format": "Markdown"
+        }
+
+    # --- Simulações para Chat com MOAI ---
+    def process_chat_message(self, user_message: str) -> str:
+        time.sleep(random.uniform(0.5, 1.0))
+        user_message_lower = user_message.lower()
+
+        if "olá" in user_message_lower or "oi" in user_message_lower:
+            return "Olá! Como posso ajudar você hoje?"
+        elif "status do projeto" in user_message_lower:
+            return "Simulando consulta ao status... O Projeto X está 75% concluído, em fase de testes."
+        elif "criar proposta" in user_message_lower:
+            return "Para criar uma nova proposta, por favor, utilize o 'Módulo de Entrada de Requisitos'."
+        elif "agentes" in user_message_lower:
+            return "No momento, os agentes ADE-X e AQT estão ativos em projetos. O AID está monitorando a infraestrutura."
+        elif "excluir" in user_message_lower and "proposta" in user_message_lower:
+            return "A função de exclusão de proposta está disponível na 'Central de Aprovações'. Tenha cuidado, pois a ação é irreversível."
+        elif "obrigado" in user_message_lower or "valeu" in user_message_lower:
+            return "De nada! Estou à disposição."
+        else:
+            return "Entendi. Sua solicitação foi registrada e o MOAI está analisando para as próximas ações."
