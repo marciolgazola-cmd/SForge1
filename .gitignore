@@ -1,0 +1,23 @@
+# Ambiente virtual
+venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Bancos de dados e arquivos de projeto de DB
+*.db
+*.sqbpro
+
+# Arquivos compactados / backup
+*.zip
+
+# Configurações locais / credenciais
+.env
+
+# Pastas de IDE/editors
+.vscode/
+.idea/
+
+# Arquivos de sistema
+.DS_Store
