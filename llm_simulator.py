@@ -1,4 +1,3 @@
-# llm_simulator.py
 import ollama
 import json
 import logging

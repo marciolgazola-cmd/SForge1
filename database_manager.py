@@ -5,8 +5,8 @@ import datetime
 from typing import List, Dict, Any, Optional
 import logging
 
-# Importa os modelos do novo arquivo models.py
-from models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog
+# Importa os modelos do novo arquivo data_models.py
+from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -144,7 +144,6 @@ class DatabaseManager:
             )
         """)
 
-
         conn.commit()
         conn.close()
         logging.info("Banco de dados inicializado/verificado com sucesso.")
@@ -153,6 +152,19 @@ class DatabaseManager:
         conn = self._connect()
         cursor = conn.cursor()
         try:
+            # Ensure estimated_value_moai is float or None for DB insertion
+            estimated_value = proposal_data.get("estimated_value_moai")
+            if isinstance(estimated_value, str):
+                try:
+                    numeric_string = estimated_value.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                    estimated_value = float(numeric_string) if numeric_string else None
+                except ValueError:
+                    logging.warning(f"Não foi possível converter estimated_value_moai '{estimated_value}' para float na inserção. Usando None.")
+                    estimated_value = None
+            elif estimated_value == "": # Empty string case
+                estimated_value = None
+
+
             cursor.execute("""
                 INSERT INTO proposals (id, title, description, requirements, problem_understanding_moai,
                                        solution_proposal_moai, scope_moai, technologies_suggested_moai,
@@ -163,7 +175,7 @@ class DatabaseManager:
                 proposal_data["id"], proposal_data["title"], proposal_data["description"],
                 json.dumps(proposal_data["requirements"]), proposal_data["problem_understanding_moai"],
                 proposal_data["solution_proposal_moai"], proposal_data["scope_moai"],
-                proposal_data["technologies_suggested_moai"], proposal_data["estimated_value_moai"], # Agora é float
+                proposal_data["technologies_suggested_moai"], estimated_value,
                 proposal_data["estimated_time_moai"], proposal_data["terms_conditions_moai"],
                 proposal_data["status"], proposal_data["submitted_at"], proposal_data["approved_at"]
             ))
@@ -185,6 +197,7 @@ class DatabaseManager:
         for row in rows:
             proposal_dict = dict(row)
             proposal_dict["requirements"] = json.loads(proposal_dict["requirements"])
+            # estimated_value_moai já vem como float ou None do DB (REAL type)
             proposals.append(Proposal(**proposal_dict))
         return proposals
 
@@ -226,6 +239,18 @@ class DatabaseManager:
                 if key == "requirements": # Handle JSON field
                     set_clauses.append(f"{key} = ?")
                     values.append(json.dumps(value))
+                elif key == "estimated_value_moai": # Handle float field, convert from string if needed
+                    if isinstance(value, str):
+                        try:
+                            numeric_string = value.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                            value = float(numeric_string) if numeric_string else None
+                        except ValueError:
+                            logging.warning(f"Não foi possível converter '{value}' para float para estimated_value_moai. Usando None.")
+                            value = None
+                    elif value == "": # Empty string case
+                        value = None
+                    set_clauses.append(f"{key} = ?")
+                    values.append(value)
                 elif isinstance(value, datetime.datetime): # Handle datetime objects
                     set_clauses.append(f"{key} = ?")
                     values.append(value)
@@ -574,16 +599,8 @@ class DatabaseManager:
         conn = self._connect()
         cursor = conn.cursor()
         try:
-            project_id = summary_data.get("project_id")
-            # Verifica se já existe um resumo global (project_id is NULL) e atualiza, senão insere
-            if project_id is None:
-                existing_summary = self.get_monitoring_summary(project_id=None)
-                if existing_summary and existing_summary.id: # Garante que o ID existe antes de tentar atualizar
-                    # Se for uma atualização de um resumo global existente, atualiza
-                    self.update_monitoring_summary(existing_summary.id, **summary_data["summary_data"])
-                    return # Já foi atualizado, sai da função
-            
-            # Se não existe, ou se é um resumo de projeto, insere
+            # Não verifica mais se já existe resumo global aqui, o MOAI fará isso antes de chamar.
+            # Apenas insere.
             cursor.execute("""
                 INSERT INTO monitoring_summaries (id, project_id, summary_data, generated_at)
                 VALUES (?, ?, ?, ?)
@@ -622,7 +639,7 @@ class DatabaseManager:
             values = []
             for key, value in kwargs.items():
                 if key == "summary_data": # Handle JSON field
-                    set_clauses.append(f"summary_data = ?")
+                    set_clauses.append(f"{key} = ?")
                     values.append(json.dumps(value))
                 elif isinstance(value, datetime.datetime): # Handle datetime objects
                     set_clauses.append(f"{key} = ?")
@@ -681,7 +698,7 @@ class DatabaseManager:
 
     def get_chat_history(self) -> List[ChatMessage]:
         conn = self._connect()
-        cursor = conn.cursor()
+        cursor = conn.cursor() # Corrigido: 'conect' para 'cursor'
         cursor.execute("SELECT * FROM chat_history ORDER BY timestamp ASC")
         rows = cursor.fetchall()
         conn.close()
@@ -718,15 +735,16 @@ class DatabaseManager:
         conn = self._connect()
         cursor = conn.cursor()
         try:
-            # Exclui logs cujo project_id corresponda ao fornecido
-            cursor.execute("DELETE FROM moai_logs WHERE project_id = ?", (project_id,))
-            # Exclui logs cujo ID do log seja igual ao project_id (para o caso de logs de proposta)
-            cursor.execute("DELETE FROM moai_logs WHERE id = ?", (project_id,)) # Assume que proposal_id pode ser usado como id do log também em alguns casos
+            # Permite deletar logs onde project_id é NULL (logs globais) ou um project_id específico
+            if project_id is None:
+                cursor.execute("DELETE FROM moai_logs WHERE project_id IS NULL")
+            else:
+                cursor.execute("DELETE FROM moai_logs WHERE project_id = ?", (project_id,))
             conn.commit()
-            logging.info(f"Logs MOAI relacionados ao ID {project_id[:8]}... excluídos.")
+            logging.info(f"Logs MOAI para projeto {project_id[:8] if project_id else 'GLOBAL'}... excluídos.")
             return True
         except sqlite3.Error as e:
-            logging.error(f"Erro ao excluir logs MOAI para ID {project_id[:8]}...: {e}")
+            logging.error(f"Erro ao excluir logs MOAI para projeto {project_id[:8] if project_id else 'GLOBAL'}...: {e}")
             conn.rollback()
             return False
         finally:

@@ -1,4 +1,4 @@
-# models.py
+# data_models.py
 import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
@@ -12,7 +12,7 @@ class Proposal(BaseModel):
     solution_proposal_moai: str
     scope_moai: str
     technologies_suggested_moai: str
-    estimated_value_moai: float # Alterado para float para cálculos
+    estimated_value_moai: Optional[float] = Field(default=None)
     estimated_time_moai: str
     terms_conditions_moai: str
     status: str
