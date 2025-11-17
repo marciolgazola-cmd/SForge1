@@ -21,3 +21,7 @@ __pycache__/
 
 # Arquivos de sistema
 .DS_Store
+
+chroma_db/
+chroma_data/
+postgres_data/

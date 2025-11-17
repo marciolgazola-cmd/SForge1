@@ -1,85 +1,192 @@
 # anp_agent.py
-
+import uuid
 import datetime
-import random
-import json # Para lidar com a serialização/desserialização de listas no DB
-from typing import List, Dict, Any
+from typing import Dict, Any
+from pydantic import BaseModel, Field
+from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from ara_agent import ARAAgent
+from aad_agent import AADAgent
+from agp_agent import AGPAgent
+import logging
 
-from data_models import Requirement, Proposal, MoaiLog
-from database_manager import DatabaseManager
-from llm_simulator import LLMSimulator
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
+# --- Modelo Pydantic para a proposta comercial final ---
+class ANPProposalContent(BaseModel):
+    title: str = Field(..., description="Título da proposta comercial.")
+    description: str = Field(..., description="Breve descrição da proposta.")
+    problem_understanding_moai: str = Field(..., description="Análise do problema (do ARA).")
+    solution_proposal_moai: str = Field(..., description="Proposta de solução (do AAD).")
+    scope_moai: str = Field(..., description="Escopo detalhado (do AAD).")
+    technologies_suggested_moai: str = Field(..., description="Tecnologias sugeridas (do AAD).")
+    estimated_value_moai: str = Field(..., description="Valor estimado (do AGP).")
+    estimated_time_moai: str = Field(..., description="Prazo estimado (do AGP).")
+    terms_conditions_moai: str = Field(..., description="Termos e condições gerais da proposta.")
 
 class ANPAgent:
-    """
-    Agente de Negócios e Propostas (ANP)
-    Responsável por gerar propostas comerciais detalhadas a partir dos requisitos.
-    Agora integrado com DatabaseManager e LLMSimulator.
-    """
-    def __init__(self, db_manager: DatabaseManager, llm_simulator: LLMSimulator):
-        self.db_manager = db_manager
+    def __init__(self, llm_simulator: LLMSimulator, ara_agent: ARAAgent, aad_agent: AADAgent, agp_agent: AGPAgent):
         self.llm_simulator = llm_simulator
+        self.ara_agent = ara_agent
+        self.aad_agent = aad_agent
+        self.agp_agent = agp_agent
+        logging.info("ANPAgent inicializado e pronto para gerar propostas comerciais.")
 
-    def generate_commercial_proposal(self, requirement: Requirement) -> Proposal:
-        """
-        Gera uma proposta comercial completa baseada nos requisitos do cliente,
-        usando o LLMSimulator e persistindo no banco de dados.
-        """
-        # 1. MOAI LOG: ANP acionado para gerar proposta
-        moai_log_obj = MoaiLog(action="ANP_ACTION", details={"event": "ANP acionado para gerar proposta", "requirement_id": requirement.db_id, "project_name": requirement.nome_projeto})
-        moai_log_data_for_db = moai_log_obj.to_dict()
-        moai_log_data_for_db.pop('db_id', None) # CORREÇÃO: Remove db_id antes de inserir
-        self.db_manager.insert("moai_logs", moai_log_data_for_db)
-
-        # 2. Gerar conteúdo da proposta usando o LLMSimulator
-        llm_generated_content = self.llm_simulator.generate_proposal_content(requirement.to_dict())
-
-        # 3. Gerar ID da proposta (simulação)
-        # Contagem de propostas existentes para gerar um ID sequencial
-        all_proposals = self.db_manager.fetch_all("proposals")
-        proposal_id_counter = len(all_proposals) + 1
-        proposal_id = f"PROP-{proposal_id_counter:03d}"
-
-        # 4. Definir estimativas (mock, ou poderiam vir do LLM/outro agente AGP)
-        # CORREÇÃO: Removido '\' para evitar SyntaxWarning
-        valor_estimado = f"R${(proposal_id_counter * 15000 + random.randint(25000, 75000)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        prazo_estimado = f"{proposal_id_counter * 2 + random.randint(6, 12)} semanas"
-
-        # 5. Criar objeto Proposal
-        new_proposal = Proposal(
-            proposal_id=proposal_id,
-            status="Pendente de Aprovação",
-            data_geracao=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-            titulo=f"Proposta Comercial - {requirement.nome_projeto} para {requirement.nome_cliente}",
-            resumo=f"Esta proposta detalha a solução para o problema de negócio de '{requirement.nome_cliente}' visando '{requirement.objetivos_projeto}'.",
-            valor_estimado=valor_estimado,
-            prazo_estimado=prazo_estimado,
-            entendimento_problema=llm_generated_content["entendimento_problema"],
-            solucao_proposta=llm_generated_content["solucao_proposta"],
-            escopo=llm_generated_content["escopo"],
-            tecnologias_sugeridas=llm_generated_content["tecnologias_sugeridas"],
-            termos_condicoes=llm_generated_content["termos_condicoes"],
-            requirement_id=requirement.db_id,
-            requisitos_base=requirement # Associa o objeto Requirement completo para fácil acesso
-        )
-
-        # 6. Persistir a proposta no banco de dados
-        # O .to_dict() do Proposal precisa ser adaptado para o DB, especialmente listas
-        proposal_data_for_db = new_proposal.to_dict()
-        proposal_data_for_db.pop('db_id', None) # Remove db_id antes de inserir, pois é auto increment
-        proposal_data_for_db.pop('requisitos_base', None) # Não persiste o objeto Requirement completo aqui
+    def generate_proposal_content(self, req_data: Dict[str, Any]) -> Dict[str, Any]:
+        logging.info(f"ANPAgent: Gerando conteúdo da proposta para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
         
-        # Converte listas para strings JSON para serem armazenadas no DB
-        proposal_data_for_db['escopo'] = json.dumps(new_proposal.escopo)
-        proposal_data_for_db['tecnologias_sugeridas'] = json.dumps(new_proposal.tecnologias_sugeridas)
+        # 1. Aciona ARA para análise de requisitos
+        problem_understanding = self.ara_agent.analyze_requirements(req_data)
 
-        proposal_db_id = self.db_manager.insert("proposals", proposal_data_for_db)
-        new_proposal.db_id = proposal_db_id # Atualiza o objeto com o ID do DB
+        # 2. Aciona AAD para design da solução
+        solution_design = self.aad_agent.design_solution(problem_understanding, req_data) # Retorna Dict
 
-        # 7. MOAI LOG: Proposta gerada e salva
-        moai_log_obj = MoaiLog(action="ANP_SUCCESS", details={"event": "Proposta comercial gerada e salva", "proposal_db_id": proposal_db_id, "proposal_id": new_proposal.proposal_id})
-        moai_log_data_for_db = moai_log_obj.to_dict()
-        moai_log_data_for_db.pop('db_id', None) # CORREÇÃO: Remove db_id antes de inserir
-        self.db_manager.insert("moai_logs", moai_log_data_for_db)
+        # 3. Aciona AGP para estimativa
+        project_estimates = self.agp_agent.estimate_project(problem_understanding, solution_design, req_data) # Retorna Dict
 
-        return new_proposal
+        # Consolida as informações e gera a proposta comercial final
+        prompt = f"""
+        Com base nas análises e designs fornecidos pelos agentes internos e nos requisitos originais do cliente,
+        crie uma proposta comercial de TI persuasiva e detalhada.
+        A proposta deve incluir: título, descrição breve, análise do problema, proposta de solução,
+        escopo, tecnologias sugeridas, valor estimado, prazo estimado e termos/condições gerais.
 
+        Dados Originais do Cliente:
+        Nome do Projeto: {req_data.get('nome_projeto', 'N/A')}
+        Nome do Cliente: {req_data.get('nome_cliente', 'N/A')}
+        Problema de Negócio: {req_data.get('problema_negocio', 'N/A')}
+        Objetivos do Projeto: {req_data.get('objetivos_projeto', 'N/A')}
+        Funcionalidades Esperadas: {req_data.get('funcionalidades_esperadas', 'N/A')}
+        Restrições: {req_data.get('restricoes', 'N/A')}
+        Público-alvo: {req_data.get('publico_alvo', 'N/A')}
+
+        Análise do Problema (ARA):
+        {problem_understanding}
+
+        Design da Solução (AAD):
+        Proposta de Solução: {solution_design.get('solution_proposal', 'N/A')}
+        Escopo: {solution_design.get('scope', 'N/A')}
+        Tecnologias Sugeridas: {solution_design.get('technologies_suggested', 'N/A')}
+        Visão Geral da Arquitetura: {solution_design.get('architecture_overview', 'N/A')}
+        Componentes Principais: {solution_design.get('main_components', 'N/A')}
+
+        Estimativas (AGP):
+        Valor Estimado: {project_estimates.get('estimated_value', 'N/A')}
+        Prazo Estimado: {project_estimates.get('estimated_time', 'N/A')}
+        Marcos Chave: {project_estimates.get('key_milestones', [])}
+        Estimativa de Recursos: {project_estimates.get('resource_estimates', {})}
+
+        Sua resposta deve ser um JSON estritamente conforme o modelo ANPProposalContent Pydantic.
+        """
+
+        system_message = "Você é o Agente de Negócios e Propostas (ANP) da Synapse Forge. Sua função é consolidar as informações dos outros agentes (ARA, AAD, AGP) e criar propostas comerciais persuasivas e completas para os clientes. Priorize clareza, profissionalismo e alinhamento com as necessidades do cliente."
+        
+        messages = [
+            {'role': 'system', 'content': system_message},
+            {'role': 'user', 'content': prompt}
+        ]
+
+        try:
+            # Chama o método chat do LLMSimulator com o modelo Pydantic para a proposta final
+            proposal_content_obj = self.llm_simulator.chat(messages, response_model=ANPProposalContent)
+            logging.info(f"ANPAgent: Conteúdo da proposta comercial gerado para '{req_data.get('nome_projeto', 'N/A')}'.")
+
+            return proposal_content_obj.dict() # Retorna como dicionário para fácil uso no MOAI
+        
+        except (LLMConnectionError, LLMGenerationError) as e:
+            logging.error(f"ANPAgent: Falha ao gerar conteúdo da proposta para '{req_data.get('nome_projeto', 'N/A')}'. Erro: {e}")
+            error_message = f"Erro ao gerar proposta comercial com o LLM: {e}. Gerando proposta com dados padrão."
+            logging.warning(error_message)
+            # Fallback para dados padrão em caso de erro grave do LLM
+            return {
+                "title": f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')} (Rascunho - Erro LLM)",
+                "description": f"Proposta inicial gerada automaticamente. Necessita de revisão manual devido a um erro na geração do conteúdo pelo LLM. {error_message}",
+                "problem_understanding_moai": problem_understanding, # Mantém o que conseguiu dos outros agentes
+                "solution_proposal_moai": solution_design.get('solution_proposal', 'Solução padrão devido a erro do LLM'),
+                "scope_moai": solution_design.get('scope', 'Escopo padrão devido a erro do LLM'),
+                "technologies_suggested_moai": solution_design.get('technologies_suggested', 'Tecnologias padrão devido a erro do LLM'),
+                "estimated_value_moai": project_estimates.get('estimated_value', 'R\$ 0,00 (Erro LLM)'),
+                "estimated_time_moai": project_estimates.get('estimated_time', 'Prazo Indefinido (Erro LLM)'),
+                "terms_conditions_moai": f"Termos e Condições Padrão. {error_message}"
+            }
+        except Exception as e:
+            logging.error(f"ANPAgent: Erro inesperado ao gerar proposta comercial: {e}")
+            return {
+                "title": f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')} (Rascunho - Erro Interno)",
+                "description": f"Proposta inicial gerada automaticamente. Necessita de revisão manual devido a um erro inesperado: {e}",
+                "problem_understanding_moai": problem_understanding, # Mantém o que conseguiu dos outros agentes
+                "solution_proposal_moai": solution_design.get('solution_proposal', 'Solução padrão devido a erro interno'),
+                "scope_moai": solution_design.get('scope', 'Escopo padrão devido a erro interno'),
+                "technologies_suggested_moai": solution_design.get('technologies_suggested', 'Tecnologias padrão devido a erro interno'),
+                "estimated_value_moai": project_estimates.get('estimated_value', 'R\$ 0,00 (Erro Interno)'),
+                "estimated_time_moai": project_estimates.get('estimated_time', 'Prazo Indefinido (Erro Interno)'),
+                "terms_conditions_moai": f"Termos e Condições Padrão. Erro: {e}"
+            }
+
+    def generate_approved_proposal_content(self, proposal_data: Dict[str, Any]) -> Dict[str, Any]:
+        logging.info(f"ANPAgent: Gerando proposta aprovada (reformulada, se necessário) para o projeto '{proposal_data.get('title', 'N/A')}'...")
+
+        # Este método poderia ser usado para refinar a proposta após aprovação
+        # para incluir detalhes finais ou ajustar linguagem. Por simplicidade,
+        # vamos reutilizar o conteúdo existente por enquanto, mas com a estrutura
+        # que permite um LLM mais tarde.
+
+        prompt = f"""
+        A seguinte proposta foi aprovada. Revise o conteúdo para garantir que ele esteja pronto para apresentação final,
+        removendo quaisquer marcadores de rascunho e adicionando uma breve introdução ou conclusão que celebre a aprovação.
+        Mantenha a estrutura e o conteúdo principal.
+
+        Proposta Original Aprovada:
+        Título: {proposal_data.get('title', 'N/A')}
+        Descrição: {proposal_data.get('description', 'N/A')}
+        Análise do Problema: {proposal_data.get('problem_understanding_moai', 'N/A')}
+        Solução Proposta: {proposal_data.get('solution_proposal_moai', 'N/A')}
+        Escopo: {proposal_data.get('scope_moai', 'N/A')}
+        Tecnologias Sugeridas: {proposal_data.get('technologies_suggested_moai', 'N/A')}
+        Valor Estimado: {proposal_data.get('estimated_value_moai', 'N/A')}
+        Prazo Estimado: {proposal_data.get('estimated_time_moai', 'N/A')}
+        Termos e Condições: {proposal_data.get('terms_conditions_moai', 'N/A')}
+
+        Sua resposta deve ser um JSON estritamente conforme o modelo ANPProposalContent Pydantic.
+        """
+
+        system_message = "Você é o Agente de Negócios e Propostas (ANP) da Synapse Forge. Após a aprovação de uma proposta, sua função é refiná-la para a versão final de apresentação ao cliente, garantindo profissionalismo e clareza."
+        
+        messages = [
+            {'role': 'system', 'content': system_message},
+            {'role': 'user', 'content': prompt}
+        ]
+
+        try:
+            # Chama o método chat do LLMSimulator com o modelo Pydantic para a proposta final
+            proposal_content_obj = self.llm_simulator.chat(messages, response_model=ANPProposalContent)
+            logging.info(f"ANPAgent: Conteúdo da proposta aprovada gerado para '{proposal_data.get('title', 'N/A')}'.")
+            return proposal_content_obj.dict()
+        except (LLMConnectionError, LLMGenerationError) as e:
+            logging.error(f"ANPAgent: Falha ao gerar conteúdo da proposta aprovada para '{proposal_data.get('title', 'N/A')}'. Erro: {e}")
+            error_message = f"Erro ao gerar proposta aprovada com o LLM: {e}. Reutilizando dados existentes."
+            logging.warning(error_message)
+            # Fallback para dados padrão ou existentes em caso de erro
+            return {
+                "title": f"{proposal_data.get('title', 'Proposta Aprovada')} (Final - Erro LLM)",
+                "description": f"Versão final da proposta. Algumas seções podem ser a versão original devido a erro na reformulação pelo LLM. {error_message}",
+                "problem_understanding_moai": proposal_data.get('problem_understanding_moai', 'N/A'),
+                "solution_proposal_moai": proposal_data.get('solution_proposal_moai', 'N/A'),
+                "scope_moai": proposal_data.get('scope_moai', 'N/A'),
+                "technologies_suggested_moai": proposal_data.get('technologies_suggested_moai', 'N/A'),
+                "estimated_value_moai": proposal_data.get('estimated_value_moai', 'N/A'),
+                "estimated_time_moai": proposal_data.get('estimated_time_moai', 'N/A'),
+                "terms_conditions_moai": proposal_data.get('terms_conditions_moai', 'N/A') + f"\n\n({error_message})"
+            }
+        except Exception as e:
+            logging.error(f"ANPAgent: Erro inesperado ao gerar proposta aprovada: {e}")
+            return {
+                "title": f"{proposal_data.get('title', 'Proposta Aprovada')} (Final - Erro Interno)",
+                "description": f"Versão final da proposta. Algumas seções podem ser a versão original devido a erro inesperado: {e}",
+                "problem_understanding_moai": proposal_data.get('problem_understanding_moai', 'N/A'),
+                "solution_proposal_moai": proposal_data.get('solution_proposal_moai', 'N/A'),
+                "scope_moai": proposal_data.get('scope_moai', 'N/A'),
+                "technologies_suggested_moai": proposal_data.get('technologies_suggested_moai', 'N/A'),
+                "estimated_value_moai": proposal_data.get('estimated_value_moai', 'N/A'),
+                "estimated_time_moai": proposal_data.get('estimated_time_moai', 'N/A'),
+                "terms_conditions_moai": proposal_data.get('terms_conditions_moai', 'N/A') + f"\n\n(Erro Interno: {e})"
+            }
