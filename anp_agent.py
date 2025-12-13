@@ -1,27 +1,38 @@
 # anp_agent.py
 import uuid
 import datetime
-from typing import Dict, Any
-from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional, Union, List
+from pydantic import BaseModel, Field, field_validator
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from ara_agent import ARAAgent
 from aad_agent import AADAgent
 from agp_agent import AGPAgent
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a proposta comercial final ---
 class ANPProposalContent(BaseModel):
-    title: str = Field(..., description="Título da proposta comercial.")
-    description: str = Field(..., description="Breve descrição da proposta.")
-    problem_understanding_moai: str = Field(..., description="Análise do problema (do ARA).")
-    solution_proposal_moai: str = Field(..., description="Proposta de solução (do AAD).")
-    scope_moai: str = Field(..., description="Escopo detalhado (do AAD).")
-    technologies_suggested_moai: str = Field(..., description="Tecnologias sugeridas (do AAD).")
-    estimated_value_moai: str = Field(..., description="Valor estimado (do AGP).")
-    estimated_time_moai: str = Field(..., description="Prazo estimado (do AGP).")
-    terms_conditions_moai: str = Field(..., description="Termos e condições gerais da proposta.")
+    title: Optional[str] = Field(None, description="Título da proposta comercial.")
+    description: Optional[str] = Field(None, description="Breve descrição da proposta.")
+    problem_understanding_moai: Optional[str] = Field(None, description="Análise do problema (do ARA).")
+    solution_proposal_moai: Optional[str] = Field(None, description="Proposta de solução (do AAD).")
+    scope_moai: Optional[str] = Field(None, description="Escopo detalhado (do AAD).")
+    technologies_suggested_moai: Optional[Union[str, List[str]]] = Field(None, description="Tecnologias sugeridas (do AAD).")
+    estimated_value_moai: Optional[str] = Field(None, description="Valor estimado (do AGP).")
+    estimated_time_moai: Optional[str] = Field(None, description="Prazo estimado (do AGP).")
+    terms_conditions_moai: Optional[str] = Field(None, description="Termos e condições gerais da proposta.")
+    
+    @field_validator('technologies_suggested_moai', mode='before')
+    @classmethod
+    def convert_tech_list_to_string(cls, v):
+        """Converte listas de tecnologias em string formatada"""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return ", ".join([str(tech) for tech in v])
+        return str(v) if v else None
 
 class ANPAgent:
     def __init__(self, llm_simulator: LLMSimulator, ara_agent: ARAAgent, aad_agent: AADAgent, agp_agent: AGPAgent):
@@ -29,7 +40,8 @@ class ANPAgent:
         self.ara_agent = ara_agent
         self.aad_agent = aad_agent
         self.agp_agent = agp_agent
-        logging.info("ANPAgent inicializado e pronto para gerar propostas comerciais.")
+        self.model = get_agent_model('ANP')  # mistral para propostas persuasivas
+        logging.info(f"ANPAgent inicializado com modelo {self.model} e pronto para gerar propostas comerciais.")
 
     def generate_proposal_content(self, req_data: Dict[str, Any]) -> Dict[str, Any]:
         logging.info(f"ANPAgent: Gerando conteúdo da proposta para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
@@ -87,10 +99,22 @@ class ANPAgent:
 
         try:
             # Chama o método chat do LLMSimulator com o modelo Pydantic para a proposta final
-            proposal_content_obj = self.llm_simulator.chat(messages, response_model=ANPProposalContent)
+            proposal_content_obj = self.llm_simulator.chat(messages, response_model=ANPProposalContent, model_override=self.model)
             logging.info(f"ANPAgent: Conteúdo da proposta comercial gerado para '{req_data.get('nome_projeto', 'N/A')}'.")
 
-            return proposal_content_obj.dict() # Retorna como dicionário para fácil uso no MOAI
+            # Converte para dict e garante que valores None virem como strings vazias
+            proposal_dict = proposal_content_obj.dict()
+            return {
+                "title": proposal_dict.get('title') or "",
+                "description": proposal_dict.get('description') or "",
+                "problem_understanding_moai": proposal_dict.get('problem_understanding_moai') or "",
+                "solution_proposal_moai": proposal_dict.get('solution_proposal_moai') or "",
+                "scope_moai": proposal_dict.get('scope_moai') or "",
+                "technologies_suggested_moai": proposal_dict.get('technologies_suggested_moai') or "",
+                "estimated_value_moai": proposal_dict.get('estimated_value_moai') or None,
+                "estimated_time_moai": proposal_dict.get('estimated_time_moai') or "",
+                "terms_conditions_moai": proposal_dict.get('terms_conditions_moai') or ""
+            }
         
         except (LLMConnectionError, LLMGenerationError) as e:
             logging.error(f"ANPAgent: Falha ao gerar conteúdo da proposta para '{req_data.get('nome_projeto', 'N/A')}'. Erro: {e}")
@@ -104,7 +128,7 @@ class ANPAgent:
                 "solution_proposal_moai": solution_design.get('solution_proposal', 'Solução padrão devido a erro do LLM'),
                 "scope_moai": solution_design.get('scope', 'Escopo padrão devido a erro do LLM'),
                 "technologies_suggested_moai": solution_design.get('technologies_suggested', 'Tecnologias padrão devido a erro do LLM'),
-                "estimated_value_moai": project_estimates.get('estimated_value', 'R\$ 0,00 (Erro LLM)'),
+                "estimated_value_moai": project_estimates.get('estimated_value', 'R$ 0,00 (Erro LLM)'),
                 "estimated_time_moai": project_estimates.get('estimated_time', 'Prazo Indefinido (Erro LLM)'),
                 "terms_conditions_moai": f"Termos e Condições Padrão. {error_message}"
             }
@@ -117,7 +141,7 @@ class ANPAgent:
                 "solution_proposal_moai": solution_design.get('solution_proposal', 'Solução padrão devido a erro interno'),
                 "scope_moai": solution_design.get('scope', 'Escopo padrão devido a erro interno'),
                 "technologies_suggested_moai": solution_design.get('technologies_suggested', 'Tecnologias padrão devido a erro interno'),
-                "estimated_value_moai": project_estimates.get('estimated_value', 'R\$ 0,00 (Erro Interno)'),
+                "estimated_value_moai": project_estimates.get('estimated_value', 'R$ 0,00 (Erro Interno)'),
                 "estimated_time_moai": project_estimates.get('estimated_time', 'Prazo Indefinido (Erro Interno)'),
                 "terms_conditions_moai": f"Termos e Condições Padrão. Erro: {e}"
             }

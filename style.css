@@ -1,110 +1,467 @@
+/* ====== TEMA PRINCIPAL ====== */
+:root {
+    --primary-color: #1081BA;       /* Azul principal */
+    --primary-dark: #0E6DA0;        /* Azul escuro */
+    --primary-light: #1AA4FF;       /* Azul claro */
+    --accent-color: #FF6B6B;        /* Vermelho para ações críticas */
+    --success-color: #51CF66;       /* Verde para sucesso */
+    --warning-color: #FFD43B;       /* Amarelo para avisos */
+    
+    --bg-dark: #16171C;            /* Preto do fundo */
+    --bg-secondary: #2D3038;       /* Cinza escuro secundário */
+    --text-light: #AFB1B0;         /* Cinza claro */
+    --text-primary: #FFFFFF;       /* Branco puro */
+    --border-color: #0E6DA0;       /* Azul para bordas */
+}
+
 body {
-    font-family: Arial, sans-serif;
-    background-color: #16171C; /* RGB Preto: 22, 23, 28 */
-    color: #AFB1B0; /* RGB Cinza Claro: 175,177, 176 */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, var(--bg-dark) 0%, #1a1b22 100%);
+    color: var(--text-light);
     margin: 0;
     padding: 20px;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    flex-direction: column; /* Para empilhar h1, button e p */
+    flex-direction: column;
 }
 
 h1 {
-    color: #1081BA; /* RGB Azul: 16, 129, 186 */
+    color: var(--primary-color);
     text-align: center;
-}
-
-button {
-    background-color: #1081BA; /* RGB Azul */
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
-    margin-top: 20px; /* Adiciona um espaço acima do botão */
-}
-
-button:hover {
-    background-color: #0E6DA0; /* Um azul um pouco mais escuro para o hover */
-}
-
-#mensagem {
-    margin-top: 15px; /* Espaço acima da mensagem */
-    font-size: 18px;
-    font-weight: bold;
-    color: #AFB1B0; /* Cinza Claro */
+    font-size: 2.5em;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(16, 129, 186, 0.2);
+    letter-spacing: 1px;
 }
 
 h2 {
-    color: #1081BA; /* Azul */
+    color: var(--primary-color);
     margin-top: 30px;
+    font-size: 1.8em;
+    font-weight: 600;
+    border-left: 4px solid var(--primary-light);
+    padding-left: 15px;
 }
 
-input[type="text"] {
-    width: 300px;
-    padding: 10px;
-    margin-top: 10px;
-    border: 1px solid #0E6DA0; /* Um azul mais escuro para a borda */
-    border-radius: 5px;
-    background-color: #2D3038; /* Um cinza escuro para o fundo do campo */
-    color: white;
+h3 {
+    color: var(--text-primary);
+    font-size: 1.3em;
+    font-weight: 500;
+}
+
+/* ====== BOTÕES ====== */
+button {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: var(--text-primary);
+    border: 2px solid var(--primary-light);
+    padding: 12px 24px;
+    border-radius: 8px;
+    cursor: pointer;
     font-size: 16px;
+    font-weight: 600;
+    margin-top: 20px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(16, 129, 186, 0.2);
 }
 
-input[type="text"]::placeholder {
-    color: #AFB1B0; /* Cinza claro para o placeholder */
+button:hover {
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary-color) 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(16, 129, 186, 0.4);
+    border-color: var(--primary-light);
 }
 
-input[type="text"]:focus {
+button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(16, 129, 186, 0.3);
+}
+
+/* ====== INPUTS E FORMULÁRIOS ====== */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+    width: 100%;
+    max-width: 500px;
+    padding: 12px 16px;
+    margin-top: 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 16px;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+input[type="text"]::placeholder,
+input[type="email"]::placeholder,
+input[type="password"]::placeholder,
+input[type="number"]::placeholder,
+textarea::placeholder {
+    color: var(--text-light);
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
     outline: none;
-    border-color: #1081BA; /* Azul ao focar */
-    box-shadow: 0 0 5px rgba(16, 129, 186, 0.5); /* Sombra azul ao focar */
+    border-color: var(--primary-light);
+    box-shadow: 0 0 10px rgba(26, 164, 255, 0.3);
+    background-color: #35394a;
+}
+
+input[type="text"]:disabled,
+input[type="email"]:disabled,
+input[type="password"]:disabled,
+input[type="number"]:disabled,
+textarea:disabled,
+select:disabled {
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ====== MENSAGENS ====== */
+#mensagem {
+    margin-top: 15px;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--text-light);
+    padding: 15px 20px;
+    background-color: rgba(16, 129, 186, 0.1);
+    border-left: 4px solid var(--primary-light);
+    border-radius: 4px;
 }
 
 #exibirEntrada {
     margin-top: 15px;
     font-size: 17px;
-    color: #AFB1B0; /* Cinza Claro */
-    min-height: 20px; /* Garante que o espaço esteja reservado */
+    color: var(--text-light);
+    min-height: 20px;
+    background: var(--bg-secondary);
+    padding: 15px 20px;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
 }
 
-/* Estilo para a tarefa concluída */
+/* ====== LISTAS ====== */
 .concluida span {
-    text-decoration: line-through; /* Risca o texto */
-    color: #888; /* Muda a cor para um cinza mais claro */
+    text-decoration: line-through;
+    color: var(--text-light);
+    opacity: 0.7;
 }
 
-li { /* Esta regra é importante! */
-    display: flex; /* Para alinhar o texto e o botão de exclusão */
-    justify-content: space-between; /* Espaça o texto e o botão */
-    align-items: center; /* Centraliza verticalmente */
-    background-color: #2D3038;
-    color: white;
-    padding: 10px 15px;
+li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, #3a3e4d 100%);
+    color: var(--text-primary);
+    padding: 12px 15px;
     margin-bottom: 8px;
-    border-radius: 5px;
+    border-radius: 8px;
     font-size: 16px;
+    border-left: 4px solid var(--primary-color);
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-li span { /* Esta regra também é importante! */
-    flex-grow: 1; /* Permite que o texto ocupe o espaço disponível */
-    cursor: pointer; /* Indica que o texto é clicável */
+li:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(16, 129, 186, 0.2);
+    background: linear-gradient(135deg, #3a3e4d 0%, var(--bg-secondary) 100%);
+}
+
+li span {
+    flex-grow: 1;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+li span:hover {
+    color: var(--primary-light);
+}
+
+/* ====== BOTÕES DE AÇÃO ====== */
+.btn-excluir,
+.btn-editar,
+.btn-aprovar,
+.btn-rejeitar {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    margin-left: 10px;
+    padding: 5px 10px;
+    line-height: 1;
+    transition: all 0.3s ease;
+    border-radius: 6px;
 }
 
 .btn-excluir {
-    background: none; /* Remove o fundo padrão do botão */
-    border: none; /* Remove a borda */
-    color: white; /* Cor do texto/emoji do botão */
-    cursor: pointer;
-    font-size: 18px;
-    margin-left: 10px; /* Espaço entre o texto e o botão */
-    padding: 0; /* Remove padding extra */
-    line-height: 1; /* Ajusta a altura da linha para o emoji */
+    color: var(--accent-color);
 }
 
 .btn-excluir:hover {
-    opacity: 0.7; /* Pequeno efeito ao passar o mouse */
+    background-color: rgba(255, 107, 107, 0.1);
+    transform: scale(1.2);
+}
+
+.btn-editar {
+    color: var(--primary-light);
+}
+
+.btn-editar:hover {
+    background-color: rgba(26, 164, 255, 0.1);
+    transform: scale(1.2);
+}
+
+.btn-aprovar {
+    color: var(--success-color);
+}
+
+.btn-aprovar:hover {
+    background-color: rgba(81, 207, 102, 0.1);
+    transform: scale(1.2);
+}
+
+.btn-rejeitar {
+    color: var(--warning-color);
+}
+
+.btn-rejeitar:hover {
+    background-color: rgba(255, 212, 59, 0.1);
+    transform: scale(1.2);
+}
+
+/* ====== CARTÕES/CONTAINERS ====== */
+.card {
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, #3a3e4d 100%);
+    border: 2px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 15px 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.card:hover {
+    border-color: var(--primary-light);
+    box-shadow: 0 8px 25px rgba(16, 129, 186, 0.2);
+    transform: translateY(-2px);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.card-title {
+    color: var(--primary-light);
+    font-size: 1.3em;
+    font-weight: 600;
+}
+
+/* ====== PROGRESSO ====== */
+.progress-container {
+    background-color: var(--bg-secondary);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 15px 0;
+    height: 30px;
+    border: 2px solid var(--border-color);
+}
+
+.progress-bar {
+    background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-light) 100%);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-primary);
+    font-weight: bold;
+    font-size: 14px;
+    transition: width 0.3s ease;
+}
+
+/* ====== ALERTAS E NOTIFICAÇÕES ====== */
+.alert {
+    padding: 15px 20px;
+    margin: 15px 0;
+    border-radius: 8px;
+    border-left: 4px solid;
+    font-weight: 500;
+}
+
+.alert-success {
+    background-color: rgba(81, 207, 102, 0.1);
+    color: var(--success-color);
+    border-left-color: var(--success-color);
+}
+
+.alert-error {
+    background-color: rgba(255, 107, 107, 0.1);
+    color: var(--accent-color);
+    border-left-color: var(--accent-color);
+}
+
+.alert-warning {
+    background-color: rgba(255, 212, 59, 0.1);
+    color: var(--warning-color);
+    border-left-color: var(--warning-color);
+}
+
+.alert-info {
+    background-color: rgba(26, 164, 255, 0.1);
+    color: var(--primary-light);
+    border-left-color: var(--primary-light);
+}
+
+/* ====== TABELAS ====== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background-color: var(--bg-secondary);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+table thead {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: var(--text-primary);
+}
+
+table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border-color);
+}
+
+table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-light);
+}
+
+table tbody tr {
+    transition: all 0.3s ease;
+}
+
+table tbody tr:hover {
+    background-color: #3a3e4d;
+    color: var(--text-primary);
+}
+
+table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* ====== RESPONSIVE ====== */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2em;
+    }
+
+    h2 {
+        font-size: 1.5em;
+        padding-left: 10px;
+    }
+
+    button {
+        width: 100%;
+        max-width: 300px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    textarea,
+    select {
+        max-width: 100%;
+    }
+
+    li {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .btn-excluir {
+        margin-left: 0;
+        margin-top: 10px;
+    }
+
+    table {
+        font-size: 14px;
+    }
+
+    table th,
+    table td {
+        padding: 10px;
+    }
+}
+
+/* ====== ANIMAÇÕES ====== */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease;
+}
+
+.slide-in {
+    animation: slideIn 0.3s ease;
+}
+
+/* ====== SCROLLBAR CUSTOMIZADO ====== */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-light);
 }

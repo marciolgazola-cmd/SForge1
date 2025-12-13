@@ -2,27 +2,29 @@
 import uuid
 import datetime
 import random
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do ASE ---
 class ASEReport(BaseModel):
-    status: str = Field(..., description="Status geral da auditoria de segurança (ex: 'Seguro', 'Vulnerabilidades Encontradas').")
-    overall_risk: str = Field(..., description="Avaliação do risco geral (ex: 'Baixo', 'Médio', 'Alto').")
-    vulnerabilities: Dict[str, int] = Field(..., description="Contagem de vulnerabilidades por nível (crítico, alto, médio, baixo).")
-    compliance_status: str = Field(..., description="Status de conformidade com padrões de segurança (ex: 'Em conformidade', 'Não conforme').")
-    last_scan: str = Field(..., description="Data e hora da última varredura de segurança.")
-    recommendations: List[str] = Field(..., description="Lista de recomendações de segurança.")
-    details_llm: str = Field(..., description="Detalhes adicionais e insights gerados pelo LLM.")
+    status: Optional[str] = Field(None, description="Status geral da auditoria de segurança (ex: 'Seguro', 'Vulnerabilidades Encontradas').")
+    overall_risk: Optional[str] = Field(None, description="Avaliação do risco geral (ex: 'Baixo', 'Médio', 'Alto').")
+    vulnerabilities: Dict[str, int] = Field(default_factory=dict, description="Contagem de vulnerabilidades por nível (crítico, alto, médio, baixo).")
+    compliance_status: Optional[str] = Field(None, description="Status de conformidade com padrões de segurança (ex: 'Em conformidade', 'Não conforme').")
+    last_scan: Optional[str] = Field(None, description="Data e hora da última varredura de segurança.")
+    recommendations: List[str] = Field(default_factory=list, description="Lista de recomendações de segurança.")
+    details_llm: Optional[str] = Field(None, description="Detalhes adicionais e insights gerados pelo LLM.")
 
 class ASEAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("ASEAgent inicializado e pronto para auditar segurança.")
+        self.model = get_agent_model('ASE')  # llama3 para análise minuciosa de segurança
+        logging.info(f"ASEAgent inicializado com modelo {self.model} e pronto para auditar segurança.")
 
     def generate_security_report(self, project_id: str, project_name: str, code_snippets: List[Dict[str, str]]) -> Dict[str, Any]:
         logging.info(f"ASEAgent: Gerando relatório de segurança para o projeto '{project_name}' ({project_id})...")
@@ -64,7 +66,7 @@ class ASEAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=ASEReport)
+            response_obj = self.llm_simulator.chat(messages, response_model=ASEReport, model_override=self.model)
             logging.info(f"ASEAgent: Relatório de segurança gerado para o projeto '{project_name}' ({project_id}).")
             return response_obj.dict()
         except (LLMConnectionError, LLMGenerationError) as e:

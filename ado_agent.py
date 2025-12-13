@@ -1,25 +1,27 @@
 # ado_agent.py
 import uuid
 import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do ADO ---
 class ADOResponse(BaseModel):
-    filename: str = Field(..., description="Nome do arquivo da documentação gerada.")
-    content: str = Field(..., description="Conteúdo completo da documentação em formato Markdown.")
-    document_type: str = Field(..., description="Tipo de documento (ex: 'Manual do Usuário', 'Documentação Técnica').")
-    version: str = Field("1.0", description="Versão do documento.")
-    last_updated: str = Field(..., description="Data e hora da última atualização.")
+    filename: Optional[str] = Field(None, description="Nome do arquivo da documentação gerada.")
+    content: Optional[str] = Field(None, description="Conteúdo completo da documentação em formato Markdown.")
+    document_type: Optional[str] = Field(None, description="Tipo de documento (ex: 'Manual do Usuário', 'Documentação Técnica').")
+    version: Optional[str] = Field("1.0", description="Versão do documento.")
+    last_updated: Optional[str] = Field(None, description="Data e hora da última atualização.")
 
 class ADOAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("ADOAgent inicializado e pronto para documentar projetos.")
+        self.model = get_agent_model('ADO')  # mistral para documentação clara
+        logging.info(f"ADOAgent inicializado com modelo {self.model} e pronto para documentar projetos.")
 
     def generate_documentation(self, project_id: str, project_name: str, doc_type: str, relevant_info: str) -> Dict[str, Any]:
         logging.info(f"ADOAgent: Gerando documentação '{doc_type}' para o projeto '{project_name}' ({project_id})...")
@@ -44,7 +46,7 @@ class ADOAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=ADOResponse)
+            response_obj = self.llm_simulator.chat(messages, response_model=ADOResponse, model_override=self.model)
             logging.info(f"ADOAgent: Documentação '{doc_type}' gerada para o projeto '{project_name}' ({project_id}).")
             return response_obj.dict()
         except (LLMConnectionError, LLMGenerationError) as e:

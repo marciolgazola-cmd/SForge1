@@ -5,6 +5,7 @@ import random
 import time
 from typing import Dict, Any, List
 from llm_simulator import LLMSimulator # Embora não use diretamente para geração de conteúdo rico, é bom ter
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -12,7 +13,8 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 class AIDAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator # Mantém a referência, mesmo que pouco usada aqui
-        logging.info("AIDAgent inicializado e pronto para gerenciar infraestrutura.")
+        self.model = get_agent_model('AID')  # mistral para gerenciamento de infraestrutura
+        logging.info(f"AIDAgent inicializado com modelo {self.model} e pronto para gerenciar infraestrutura.")
 
     def provision_environment(self, project_id: str, project_name: str) -> Dict[str, Any]:
         logging.info(f"AIDAgent: Provisionando ambiente para o projeto '{project_name}' ({project_id})...")

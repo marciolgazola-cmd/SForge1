@@ -5,6 +5,7 @@ import random
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
@@ -28,7 +29,8 @@ class AMSGlobalSummary(BaseModel):
 class AMSAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("AMSAgent inicializado e pronto para monitorar sistemas.")
+        self.model = get_agent_model('AMS')  # mistral para análise rápida de métricas
+        logging.info(f"AMSAgent inicializado com modelo {self.model} e pronto para monitorar sistemas.")
 
     def generate_monitoring_summary(self, project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         logging.info(f"AMSAgent: Gerando resumo de monitoramento para {'global' if project_id is None else project_name}...")

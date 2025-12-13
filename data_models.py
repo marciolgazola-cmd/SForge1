@@ -1,7 +1,7 @@
 # data_models.py
 import datetime
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional, Union
+from pydantic import BaseModel, Field, field_validator
 
 class Proposal(BaseModel):
     id: str
@@ -11,13 +11,23 @@ class Proposal(BaseModel):
     problem_understanding_moai: str
     solution_proposal_moai: str
     scope_moai: str
-    technologies_suggested_moai: str
+    technologies_suggested_moai: Union[str, List[str]]
     estimated_value_moai: Optional[float] = Field(default=None)
     estimated_time_moai: str
     terms_conditions_moai: str
     status: str
     submitted_at: datetime.datetime
     approved_at: Optional[datetime.datetime] = None
+    
+    @field_validator('technologies_suggested_moai', mode='before')
+    @classmethod
+    def convert_tech_list_to_string(cls, v):
+        """Converte listas de tecnologias em string formatada"""
+        if v is None:
+            return ""
+        if isinstance(v, list):
+            return ", ".join([str(tech).strip() for tech in v if tech])
+        return str(v).strip() if v else ""
 
 class Project(BaseModel):
     id: str
@@ -56,8 +66,8 @@ class Documentation(BaseModel):
     filename: str
     content: str
     document_type: str
-    version: str
-    last_updated: datetime.datetime
+    version: Optional[str] = None
+    last_updated: Optional[datetime.datetime] = None
 
 class MonitoringSummary(BaseModel):
     id: str

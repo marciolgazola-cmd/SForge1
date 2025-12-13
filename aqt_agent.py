@@ -2,30 +2,32 @@
 import uuid
 import datetime
 import random
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do AQT ---
 class AQTReport(BaseModel):
-    status: str = Field(..., description="Status geral do relatório de qualidade (ex: 'Aprovado', 'Com Falhas').")
-    total_tests: int = Field(..., description="Número total de testes executados.")
-    passed_tests: int = Field(..., description="Número de testes aprovados.")
-    failed_tests: int = Field(..., description="Número de testes falhos.")
-    code_coverage: str = Field(..., description="Porcentagem de cobertura de código (ex: '85%').")
-    stability: str = Field(..., description="Avaliação da estabilidade do software (ex: 'Alta', 'Média', 'Baixa').")
-    average_test_execution_time_seconds: float = Field(..., description="Tempo médio de execução dos testes em segundos.")
-    recommendations: List[str] = Field(..., description="Lista de recomendações para melhoria da qualidade.")
-    details_llm: str = Field(..., description="Detalhes adicionais e insights gerados pelo LLM.")
-    last_update: str = Field(..., description="Data e hora da última atualização do relatório.")
+    status: Optional[str] = Field(None, description="Status geral do relatório de qualidade (ex: 'Aprovado', 'Com Falhas').")
+    total_tests: Optional[int] = Field(0, description="Número total de testes executados.")
+    passed_tests: Optional[int] = Field(0, description="Número de testes aprovados.")
+    failed_tests: Optional[int] = Field(0, description="Número de testes falhos.")
+    code_coverage: Optional[str] = Field(None, description="Porcentagem de cobertura de código (ex: '85%').")
+    stability: Optional[str] = Field(None, description="Avaliação da estabilidade do software (ex: 'Alta', 'Média', 'Baixa').")
+    average_test_execution_time_seconds: float = Field(0.0, description="Tempo médio de execução dos testes em segundos.")
+    recommendations: List[str] = Field(default_factory=list, description="Lista de recomendações para melhoria da qualidade.")
+    details_llm: Optional[str] = Field(None, description="Detalhes adicionais e insights gerados pelo LLM.")
+    last_update: Optional[str] = Field(None, description="Data e hora da última atualização do relatório.")
 
 class AQTAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("AQTAgent inicializado e pronto para auditar qualidade.")
+        self.model = get_agent_model('AQT')  # llama3 para análise detalhada de testes
+        logging.info(f"AQTAgent inicializado com modelo {self.model} e pronto para auditar qualidade.")
 
     def generate_quality_report(self, project_id: str, project_name: str, code_snippets: List[Dict[str, str]]) -> Dict[str, Any]:
         logging.info(f"AQTAgent: Gerando relatório de qualidade para o projeto '{project_name}' ({project_id})...")
@@ -65,7 +67,7 @@ class AQTAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=AQTReport)
+            response_obj = self.llm_simulator.chat(messages, response_model=AQTReport, model_override=self.model)
             logging.info(f"AQTAgent: Relatório de qualidade gerado para o projeto '{project_name}' ({project_id}).")
             return response_obj.dict()
         except (LLMConnectionError, LLMGenerationError) as e:

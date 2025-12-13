@@ -2,24 +2,26 @@
 import uuid
 import datetime
 import random
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do AGP ---
 class AGPResponse(BaseModel):
-    estimated_value: str = Field(..., description="Valor monetário estimado para o projeto.")
-    estimated_time: str = Field(..., description="Prazo estimado para a conclusão do projeto.")
-    key_milestones: List[str] = Field(..., description="Lista dos principais marcos do projeto.")
-    resource_estimates: Dict[str, str] = Field(..., description="Estimativa de recursos necessários (e.g., equipe, infraestrutura).")
+    estimated_value: Optional[str] = Field(None, description="Valor monetário estimado para o projeto.")
+    estimated_time: Optional[str] = Field(None, description="Prazo estimado para a conclusão do projeto.")
+    key_milestones: List[str] = Field(default_factory=list, description="Lista dos principais marcos do projeto.")
+    resource_estimates: Dict[str, str] = Field(default_factory=dict, description="Estimativa de recursos necessários (e.g., equipe, infraestrutura).")
 
 class AGPAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("AGPAgent inicializado e pronto para gerenciar projetos.")
+        self.model = get_agent_model('AGP')  # mistral para estimativas coerentes
+        logging.info(f"AGPAgent inicializado com modelo {self.model} e pronto para gerenciar projetos.")
 
     def estimate_project(self, req_analysis: str, solution_design: Dict[str, str], req_data: Dict[str, Any]) -> Dict[str, str]:
         logging.info(f"AGPAgent: Iniciando estimativa para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
@@ -53,7 +55,7 @@ class AGPAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=AGPResponse)
+            response_obj = self.llm_simulator.chat(messages, response_model=AGPResponse, model_override=self.model)
             logging.info(f"AGPAgent: Estimativa de projeto concluída para '{req_data.get('nome_projeto', 'N/A')}'.")
             
             # Retorna um dicionário com os campos, como o MOAI espera para preencher a proposta

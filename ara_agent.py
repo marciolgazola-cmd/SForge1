@@ -1,20 +1,21 @@
 # ara_agent.py
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do ARA ---
 class ARAResponse(BaseModel):
-    problem_understanding: str = Field(..., description="Análise detalhada do problema de negócio do cliente.")
-    key_requirements: List[str] = Field(..., description="Lista de requisitos chave extraídos.")
-    implicit_requirements: List[str] = Field(..., description="Lista de requisitos implícitos ou não explicitados.")
-    assumptions: List[str] = Field(..., description="Suposições feitas para a análise.")
-    constraints: List[str] = Field(..., description="Restrições identificadas.")
-    proposed_next_steps: str = Field(..., description="Próximos passos sugeridos pelo ARA.")
+    problem_understanding: Optional[str] = Field(None, description="Análise detalhada do problema de negócio do cliente.")
+    key_requirements: List[str] = Field(default_factory=list, description="Lista de requisitos chave extraídos.")
+    implicit_requirements: List[str] = Field(default_factory=list, description="Lista de requisitos implícitos ou não explicitados.")
+    assumptions: List[str] = Field(default_factory=list, description="Suposições feitas para a análise.")
+    constraints: List[str] = Field(default_factory=list, description="Restrições identificadas.")
+    proposed_next_steps: Optional[str] = Field(None, description="Próximos passos sugeridos pelo ARA.")
 
 class ARAResponseOld(BaseModel): # Modelo antigo para compatibilidade em caso de falha de parsing do novo.
     problem_understanding: str = Field(..., description="Análise detalhada do problema de negócio do cliente.")
@@ -22,7 +23,8 @@ class ARAResponseOld(BaseModel): # Modelo antigo para compatibilidade em caso de
 class ARAAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("ARAAgent inicializado e pronto para analisar requisitos.")
+        self.model = get_agent_model('ARA')  # llama3 para análise profunda
+        logging.info(f"ARAAgent inicializado com modelo {self.model} e pronto para analisar requisitos.")
 
     def analyze_requirements(self, req_data: Dict[str, Any]) -> str:
         logging.info(f"ARAAgent: Iniciando análise de requisitos para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
@@ -52,8 +54,8 @@ class ARAAgent:
         ]
 
         try:
-            # Chama o método chat do LLMSimulator com o modelo Pydantic
-            response_obj = self.llm_simulator.chat(messages, response_model=ARAResponse)
+            # Chama o método chat do LLMSimulator com modelo override (llama3 para análise profunda)
+            response_obj = self.llm_simulator.chat(messages, response_model=ARAResponse, model_override=self.model)
             logging.info(f"ARAAgent: Análise de requisitos concluída para '{req_data.get('nome_projeto', 'N/A')}'.")
             
             # Retorna uma string formatada ou o JSON bruto, dependendo de como o MOAI espera consumir

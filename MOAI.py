@@ -314,16 +314,16 @@ class SynapseForgeBackend:
 
         proposal = Proposal(
             id=proposal_id,
-            title=initial_content.get('title', f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')}"),
-            description=initial_content.get('description', f"Proposta gerada para {req_data.get('nome_cliente', 'o cliente')}"),
+            title=initial_content.get('title', f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')}") or f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')}",
+            description=initial_content.get('description', f"Proposta gerada para {req_data.get('nome_cliente', 'o cliente')}") or f"Proposta gerada para {req_data.get('nome_cliente', 'o cliente')}",
             requirements=req_data,
-            problem_understanding_moai=initial_content.get('problem_understanding_moai', "N/A"),
-            solution_proposal_moai=initial_content.get('solution_proposal_moai', "N/A"),
-            scope_moai=initial_content.get('scope_moai', "N/A"),
-            technologies_suggested_moai=initial_content.get('technologies_suggested_moai', "N/A"),
-            estimated_value_moai=estimated_value, # Passa como float ou None
-            estimated_time_moai=initial_content.get('estimated_time_moai', "N/A"),
-            terms_conditions_moai=initial_content.get('terms_conditions_moai', "N/A"),
+            problem_understanding_moai=initial_content.get('problem_understanding_moai', "") or "",
+            solution_proposal_moai=initial_content.get('solution_proposal_moai', "") or "",
+            scope_moai=initial_content.get('scope_moai', "") or "",
+            technologies_suggested_moai=initial_content.get('technologies_suggested_moai', "") or "",
+            estimated_value_moai=estimated_value,
+            estimated_time_moai=initial_content.get('estimated_time_moai', "") or "",
+            terms_conditions_moai=initial_content.get('terms_conditions_moai', "") or "",
             status=status,
             submitted_at=submitted_at,
             approved_at=approved_at
@@ -798,7 +798,28 @@ class SynapseForgeBackend:
         
         llm_messages.append({'role': 'user', 'content': user_message})
 
-        system_message = "Você é o MOAI, o Orquestrador Modular de IA da Synapse Forge. Sua função é interagir com o CVO (Chief Visionary Officer), respondendo perguntas, fornecendo insights e executando comandos. Seja prestativo, informativo e mantenha o tone profissional e visionário da Synapse Forge."
+        # Sistema melhorado com instruções mais claras e precisas
+        system_message = """Você é o MOAI, o Orquestrador Modular de IA da Synapse Forge. 
+
+INSTRUÇÕES CRÍTICAS:
+1. Sempre responda em português claro, correto e profissional
+2. Use frases bem estruturadas, sem erros gramaticais ou de ortografia
+3. Seja conciso mas informativo
+4. Mantenha um tom profissional, visionário e amigável
+5. Estruture suas respostas com clareza lógica
+
+CONTEXTO:
+- Você interage com o CVO (Chief Visionary Officer) da organização
+- Forneça insights estratégicos baseados nos dados dos projetos e propostas
+- Ofereja recomendações práticas e executáveis
+- Responda com confiança sobre as capacidades do sistema
+
+FORMATO:
+- Respostas diretas e bem articuladas
+- Se aplicável, use tópicos com marcadores
+- Sempre mantenha coerência e clareza máxima
+- Evite respostas fragmentadas ou truncadas"""
+        
         llm_messages.insert(0, {'role': 'system', 'content': system_message})
 
         try:

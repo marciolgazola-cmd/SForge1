@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import datetime
 import random
 import pandas as pd
@@ -12,23 +13,37 @@ from MOAI import SynapseForgeBackend
 from llm_simulator import LLMConnectionError, LLMGenerationError
 # Importa os modelos de dados
 from data_models import Proposal, Project, Documentation, ChatMessage, MOAILog
+# Importa o módulo de tema customizado
+from streamlit_theme import apply_custom_theme, format_status, create_card
+
+# --- Aplicar Tema Customizado ---
+apply_custom_theme()
+
+# Forçar idioma pt-BR e habilitar spellcheck nos inputs/textarea do Streamlit
+components.html("""
+<script>
+    document.documentElement.lang = 'pt-BR';
+    function setPtBRSpell() {
+        document.querySelectorAll('input, textarea').forEach(function(el){
+            el.lang = 'pt-BR';
+            el.setAttribute('spellcheck', 'true');
+            el.setAttribute('autocapitalize', 'sentences');
+        });
+    }
+    setPtBRSpell();
+    const observer = new MutationObserver(function(){ setPtBRSpell(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+</script>
+""", height=0)
 
 # --- Inicializa o backend (Singleton) ---
 backend = SynapseForgeBackend()
-
-# --- Configuração da Página ---
-st.set_page_config(
-    page_title="CognitoLink - Synapse Forge",
-    page_icon="✨",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # --- Funções Auxiliares ---
 def format_currency(value: Optional[float]) -> str:
     if value is None:
         return "N/A"
-    return f"R\$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # --- Inicializa o estado da aplicação (session_state) ---
 if 'current_page' not in st.session_state:
@@ -104,42 +119,56 @@ def requirements_entry_page():
     """)
 
     with st.form("requirements_form"):
-        project_name = st.text_input("Nome do Projeto", "Sistema de Gestão de Clientes v2")
-        client_name = st.text_input("Nome do Cliente", "Acme Corporation")
-        business_problem = st.text_area("Problema de Negócio (Desafio do Cliente)",
-                                        "A Acme Corporation enfrenta dificuldades em gerenciar seu crescente número de clientes. O sistema atual é obsoleto, manual e não permite uma visão 360 do cliente, impactando a retenção e o cross-selling.")
-        objectives = st.text_area("Objetivos do Projeto",
-                                  "Desenvolver um CRM moderno que centralize informações de clientes, automatize interações, gere relatórios de vendas e integre com plataformas de e-mail marketing existentes.")
-        expected_features = st.text_area("Funcionalidades Esperadas",
-                                         "Cadastro de clientes, histórico de interações, gestão de leads, automação de e-mails, relatórios customizáveis, painel de controle para gerentes de vendas.")
-        restrictions = st.text_area("Restrições e Requisitos Não Funcionais (Orçamento, Prazo, Segurança, etc.)",
-                                      "Orçamento máximo de R\$ 80.000,00. Prazo de entrega de 5 meses para MVP. Alta disponibilidade (99.9%), escalabilidade para 10.000 usuários ativos simultâneos. Deve ser hospedado em ambiente de nuvem AWS.")
-        target_audience = st.text_area("Público-alvo",
-                                        "Equipes de vendas, marketing e suporte ao cliente da Acme Corporation.")
+        st.markdown("### 📋 Informações Básicas")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            project_name = st.text_input("🏢 Nome do Projeto *", value="", help="Ex: Sistema de Gestão de Clientes")
+        with col2:
+            client_name = st.text_input("👤 Nome do Cliente *", value="", help="Ex: Acme Corporation")
+        with col3:
+            target_audience = st.text_input("🎯 Público-alvo", value="", help="Usuários principais da solução")
+        
+        st.markdown("### 🔍 Análise do Problema")
+        business_problem = st.text_area("❓ Problema de Negócio (Desafio do Cliente) *", value="", height=120, help="Descreva o principal problema que precisa ser resolvido")
+        
+        st.markdown("### 💡 Solução Proposta")
+        col4, col5 = st.columns(2)
+        with col4:
+            objectives = st.text_area("📍 Objetivos do Projeto", value="", height=100, help="Objetivos principais que a solução deve alcançar")
+        with col5:
+            expected_features = st.text_area("✨ Funcionalidades Esperadas", value="", height=100, help="Lista de funcionalidades principais")
+        
+        st.markdown("### 📊 Escopo e Restrições")
+        restrictions = st.text_area("⚠️ Restrições e Requisitos (Orçamento, Prazo, Segurança, etc.)", value="", height=100, help="Limites técnicos, financeiros e temporais")
 
-        submitted = st.form_submit_button("Gerar Proposta via MOAI")
+        submitted = st.form_submit_button("🚀 Gerar Proposta via MOAI", use_container_width=True)
 
         if submitted:
-            req_data = {
-                "nome_projeto": project_name,
-                "nome_cliente": client_name,
-                "problema_negocio": business_problem,
-                "objetivos_projeto": objectives,
-                "funcionalidades_esperadas": expected_features,
-                "restricoes": restrictions,
-                "publico_alvo": target_audience
-            }
-            try:
-                with st.spinner("MOAI e Agentes trabalhando na sua proposta..."):
-                    # MOAI agora espera um dicionário do ANP e o converte internamente
-                    proposal_content_dict = backend.anp_agent.generate_proposal_content(req_data)
-                    new_proposal = backend.create_proposal(req_data, initial_content=proposal_content_dict)
-                st.success(f"Proposta '{new_proposal.title}' gerada com sucesso! ID: {new_proposal.id[:8]}... Enviada para Central de Aprovações.")
-                navigate_to("aprovacoes")
-            except (LLMConnectionError, LLMGenerationError) as e:
-                st.error(f"Erro ao gerar proposta: {e}. Verifique a conexão com o LLM (Ollama) e se o modelo está baixado.")
-            except Exception as e:
-                st.error(f"Ocorreu um erro inesperado ao gerar a proposta: {e}")
+            # Validar campos obrigatórios
+            if not project_name or not client_name or not business_problem:
+                st.error("❌ Por favor, preencha pelo menos: Nome do Projeto, Cliente e Problema de Negócio")
+            else:
+                req_data = {
+                    "nome_projeto": project_name.strip(),
+                    "nome_cliente": client_name.strip(),
+                    "problema_negocio": business_problem.strip(),
+                    "objetivos_projeto": objectives.strip(),
+                    "funcionalidades_esperadas": expected_features.strip(),
+                    "restricoes": restrictions.strip(),
+                    "publico_alvo": target_audience.strip()
+                }
+                try:
+                    with st.spinner("⏳ MOAI e Agentes trabalhando na sua proposta..."):
+                        # MOAI agora espera um dicionário do ANP e o converte internamente
+                        proposal_content_dict = backend.anp_agent.generate_proposal_content(req_data)
+                        new_proposal = backend.create_proposal(req_data, initial_content=proposal_content_dict)
+                    st.success(f"✅ Proposta '{new_proposal.title}' gerada com sucesso! ID: {new_proposal.id[:8]}... Enviada para Central de Aprovações.")
+                    navigate_to("aprovacoes")
+                except (LLMConnectionError, LLMGenerationError) as e:
+                    st.error(f"❌ Erro ao gerar proposta: {e}. Verifique a conexão com o LLM (Ollama) e se o modelo está baixado.")
+                except Exception as e:
+                    st.error(f"❌ Ocorreu um erro inesperado ao gerar a proposta: {e}")
+                    st.info(f"Detalhes técnicos: {type(e).__name__}")
 
 
 def approvals_center_page():
@@ -154,133 +183,156 @@ def approvals_center_page():
     approved_proposals = [p for p in all_proposals if p.status == "approved"]
     rejected_proposals = [p for p in all_proposals if p.status == "rejected"]
 
-    st.subheader(f"Propostas Pendentes ({len(pending_proposals)})")
-    if pending_proposals:
-        for proposal in pending_proposals:
-            with st.expander(f"Proposta: {proposal.title} (ID: {proposal.id[:8]}...)"):
-                st.subheader("1. Entendimento do Problema (MOAI):")
-                st.write(proposal.problem_understanding_moai)
-                st.subheader("2. Proposta de Solução (MOAI):")
-                st.write(proposal.solution_proposal_moai)
-                st.subheader("3. Escopo (MOAI):")
-                st.write(proposal.scope_moai)
-                st.subheader("4. Tecnologias Sugeridas (MOAI):")
-                st.write(proposal.technologies_suggested_moai)
-                st.subheader("5. Estimativas (MOAI):")
-                st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
-                st.write(f"**Prazo Estimado:** {proposal.estimated_time_moai}")
-                st.subheader("6. Termos e Condições (MOAI):")
-                st.write(proposal.terms_conditions_moai)
-                
-                edit_key = f"edit_proposal_content_{proposal.id}"
-                if edit_key not in st.session_state:
-                    st.session_state[edit_key] = False
-
-                col_actions = st.columns(3)
-                with col_actions[0]:
-                    if st.button(f"Aprovar Proposta {proposal.id[:4]}...", key=f"approve_{proposal.id}"):
-                        with st.spinner(f"Aprovando proposta {proposal.id[:8]}... e iniciando orquestração do projeto..."):
-                            project_id = backend.update_proposal_status(proposal.id, "approved")
-                            if project_id:
-                                st.success(f"Proposta {proposal.id[:8]}... aprovada! Projeto {project_id[:8]}... criado e orquestração iniciada.")
-                            else:
-                                st.error(f"Erro ao criar projeto para proposta {proposal.id[:8]}.... Verifique os logs do MOAI.")
-                            st.rerun()
-                with col_actions[1]:
-                    if st.button(f"Rejeitar Proposta {proposal.id[:4]}...", key=f"reject_{proposal.id}"):
-                        with st.spinner(f"Rejeitando proposta {proposal.id[:8]}..."):
-                            backend.update_proposal_status(proposal.id, "rejected")
-                        st.warning(f"Proposta {proposal.id[:8]}... rejeitada.")
-                        st.rerun()
-                with col_actions[2]:
-                     if st.button(f"✏️ Editar Conteúdo {proposal.id[:4]}...", key=f"edit_{proposal.id}"):
-                         st.session_state[edit_key] = not st.session_state[edit_key]
-                         st.rerun() # Force rerun to show/hide edit form
-                
-                if st.session_state[edit_key]:
-                    st.subheader(f"Editar Conteúdo da Proposta {proposal.id[:8]}...")
-                    with st.form(key=f"form_edit_proposal_{proposal.id}"):
-                        edited_title = st.text_input("Título", value=proposal.title)
-                        edited_desc = st.text_area("Descrição", value=proposal.description)
-                        edited_problem_understanding = st.text_area("Entendimento do Problema", value=proposal.problem_understanding_moai)
-                        edited_solution_proposal = st.text_area("Solução Proposta", value=proposal.solution_proposal_moai)
-                        edited_scope = st.text_area("Escopo", value=proposal.scope_moai)
-                        edited_technologies = st.text_area("Tecnologias Sugeridas", value=proposal.technologies_suggested_moai)
+    # Abas para organizar as propostas
+    tab1, tab2, tab3 = st.tabs([
+        f"⏳ Pendentes ({len(pending_proposals)})", 
+        f"✅ Aprovadas ({len(approved_proposals)})", 
+        f"❌ Rejeitadas ({len(rejected_proposals)})"
+    ])
+    
+    with tab1:
+        if pending_proposals:
+            for proposal in pending_proposals:
+                with st.expander(f"📄 {proposal.title} (ID: {proposal.id[:8]}...)", expanded=False):
+                    col_info = st.columns([2, 1])
+                    
+                    with col_info[0]:
+                        st.markdown("#### 🔍 Entendimento do Problema")
+                        st.write(proposal.problem_understanding_moai)
                         
-                        # Exibe o valor formatado para edição, e tenta converter de volta
-                        edited_estimated_value_str = st.text_input("Valor Estimado (R\$)", value=format_currency(proposal.estimated_value_moai))
-                        edited_estimated_time = st.text_input("Prazo Estimado", value=proposal.estimated_time_moai)
-                        edited_terms_conditions = st.text_area("Termos e Condições", value=proposal.terms_conditions_moai)
+                        st.markdown("#### 💡 Solução Proposta")
+                        st.write(proposal.solution_proposal_moai)
+                        
+                        st.markdown("#### 📊 Escopo")
+                        st.write(proposal.scope_moai)
+                    
+                    with col_info[1]:
+                        st.markdown("#### 🛠️ Tecnologias")
+                        st.write(proposal.technologies_suggested_moai)
+                        
+                        st.markdown("#### 💰 Estimativas")
+                        # Exibir Valor e Prazo com fonte/tamanho consistentes aos campos do formulário
+                        st.markdown(f"**Valor:** <span style='font-size:16px'>{format_currency(proposal.estimated_value_moai)}</span>", unsafe_allow_html=True)
+                        st.markdown(f"**Prazo:** <span style='font-size:16px'>{proposal.estimated_time_moai}</span>", unsafe_allow_html=True)
+                    
+                    st.divider()
+                    
+                    st.markdown("#### 📋 Termos e Condições")
+                    st.write(proposal.terms_conditions_moai)
+                    
+                    st.divider()
+                    
+                    edit_key = f"edit_proposal_content_{proposal.id}"
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = False
 
-                        save_changes = st.form_submit_button("Salvar Alterações")
-                        if save_changes:
-                            try:
-                                # A função update_proposal_content já faz a conversão de string para float
-                                updated_fields = {
-                                    "title": edited_title,
-                                    "description": edited_desc,
-                                    "problem_understanding_moai": edited_problem_understanding,
-                                    "solution_proposal_moai": edited_solution_proposal,
-                                    "scope_moai": edited_scope,
-                                    "technologies_suggested_moai": edited_technologies,
-                                    "estimated_value_moai": edited_estimated_value_str, # Passa string, backend converterá
-                                    "estimated_time_moai": edited_estimated_time,
-                                    "terms_conditions_moai": edited_terms_conditions
-                                }
-                                backend.update_proposal_content(proposal.id, updated_fields)
-                                st.success("Proposta atualizada com sucesso!")
-                                st.session_state[edit_key] = False # Fecha o formulário após salvar
+                    col_actions = st.columns(4)
+                    with col_actions[0]:
+                        if st.button("✅ Aprovar", key=f"approve_{proposal.id}", use_container_width=True):
+                            with st.spinner(f"Aprovando proposta..."):
+                                project_id = backend.update_proposal_status(proposal.id, "approved")
+                                if project_id:
+                                    st.success(f"✅ Proposta aprovada! Projeto iniciado.")
+                                else:
+                                    st.error(f"❌ Erro ao criar projeto.")
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro ao salvar alterações: {e}. Certifique-se de que o valor estimado é um número válido.")
+                    
+                    with col_actions[1]:
+                        if st.button("❌ Rejeitar", key=f"reject_{proposal.id}", use_container_width=True):
+                            with st.spinner(f"Rejeitando proposta..."):
+                                backend.update_proposal_status(proposal.id, "rejected")
+                            st.warning(f"⚠️ Proposta rejeitada.")
+                            st.rerun()
+                    
+                    with col_actions[2]:
+                        if st.button("✏️ Editar", key=f"edit_{proposal.id}", use_container_width=True):
+                            st.session_state[edit_key] = not st.session_state[edit_key]
+                            st.rerun()
+                    
+                    with col_actions[3]:
+                        if st.button("📋 Visualizar Completo", key=f"full_{proposal.id}", use_container_width=True):
+                            st.session_state[f"view_full_{proposal.id}"] = not st.session_state.get(f"view_full_{proposal.id}", False)
+                            st.rerun()
+                    
+                    if st.session_state[edit_key]:
+                        st.markdown("---")
+                        st.subheader(f"✏️ Editar Conteúdo")
+                        with st.form(key=f"form_edit_proposal_{proposal.id}"):
+                            st.markdown("**Informações Básicas**")
+                            col_basic = st.columns(2)
+                            with col_basic[0]:
+                                edited_title = st.text_input("Título", value=proposal.title)
+                            with col_basic[1]:
+                                edited_estimated_time = st.text_input("Prazo Estimado", value=proposal.estimated_time_moai)
+                            
+                            edited_desc = st.text_area("Descrição", value=proposal.description, height=80)
+                            
+                            st.markdown("**Análise e Proposta**")
+                            col_analysis = st.columns(2)
+                            with col_analysis[0]:
+                                edited_problem_understanding = st.text_area("Entendimento do Problema", value=proposal.problem_understanding_moai, height=100)
+                            with col_analysis[1]:
+                                edited_solution_proposal = st.text_area("Solução Proposta", value=proposal.solution_proposal_moai, height=100)
+                            
+                            st.markdown("**Detalhes Técnicos**")
+                            col_tech = st.columns(2)
+                            with col_tech[0]:
+                                edited_scope = st.text_area("Escopo", value=proposal.scope_moai, height=80)
+                                edited_technologies = st.text_area("Tecnologias Sugeridas", value=proposal.technologies_suggested_moai, height=80)
+                            with col_tech[1]:
+                                edited_estimated_value_str = st.text_input("💰 Valor Estimado (R$)", value=format_currency(proposal.estimated_value_moai))
+                                edited_terms_conditions = st.text_area("Termos e Condições", value=proposal.terms_conditions_moai, height=80)
 
-    else:
-        st.info("Nenhuma proposta pendente no momento. 🎉")
-
-    st.subheader(f"Propostas Aprovadas ({len(approved_proposals)})")
-    if approved_proposals:
-        for proposal in approved_proposals:
-            with st.expander(f"Proposta: {proposal.title} (ID: {proposal.id[:8]}...)"):
-                st.write(f"**Aprovada em:** {proposal.approved_at.strftime('%Y-%m-%d %H:%M:%S')}")
-                st.subheader("Entendimento do Problema:")
-                st.write(proposal.problem_understanding_moai)
-                st.subheader("Proposta de Solução:")
-                st.write(proposal.solution_proposal_moai)
-                st.subheader("Escopo:")
-                st.write(proposal.scope_moai)
-                st.subheader("Tecnologias Sugeridas:")
-                st.write(proposal.technologies_suggested_moai)
-                st.subheader("Estimativas:")
-                st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
-                st.write(f"**Prazo Estimado:** {proposal.estimated_time_moai}")
-                st.subheader("Termos e Condições:")
-                st.write(proposal.terms_conditions_moai)
-                if st.button(f"Excluir Proposta e Projeto Associado {proposal.id[:4]}...", key=f"delete_approved_{proposal.id}", type="secondary"):
-                    if backend.delete_proposal(proposal.id):
-                        st.success(f"Proposta {proposal.id[:8]}... e projeto associado excluídos com sucesso.")
-                    else:
-                        st.error(f"Erro ao excluir proposta {proposal.id[:8]}... e projeto associado.")
-                    st.rerun()
-    else:
-        st.info("Nenhuma proposta aprovada ainda.")
-
-    st.subheader(f"Propostas Rejeitadas ({len(rejected_proposals)})")
-    if rejected_proposals:
-        for proposal in rejected_proposals:
-            with st.expander(f"Proposta: {proposal.title} (ID: {proposal.id[:8]}...)"):
-                st.subheader("Entendimento do Problema:")
-                st.write(proposal.problem_understanding_moai)
-                st.subheader("Estimativas:")
-                st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
-                st.write(f"**Status:** {proposal.status}")
-                if st.button(f"Excluir Proposta Rejeitada {proposal.id[:4]}...", key=f"delete_rejected_{proposal.id}", type="secondary"):
-                    if backend.delete_proposal(proposal.id):
-                        st.success(f"Proposta {proposal.id[:8]}... excluída com sucesso.")
-                    else:
-                        st.error(f"Erro ao excluir proposta {proposal.id[:8]}....")
-                    st.rerun()
-    else:
-        st.info("Nenhuma proposta rejeitada.")
+                            col_submit = st.columns(2)
+                            with col_submit[0]:
+                                save_changes = st.form_submit_button("💾 Salvar Alterações", use_container_width=True)
+                            with col_submit[1]:
+                                cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
+                            
+                            if save_changes:
+                                try:
+                                    updated_fields = {
+                                        "title": edited_title,
+                                        "description": edited_desc,
+                                        "problem_understanding_moai": edited_problem_understanding,
+                                        "solution_proposal_moai": edited_solution_proposal,
+                                        "scope_moai": edited_scope,
+                                        "technologies_suggested_moai": edited_technologies,
+                                        "estimated_value_moai": edited_estimated_value_str,
+                                        "estimated_time_moai": edited_estimated_time,
+                                        "terms_conditions_moai": edited_terms_conditions
+                                    }
+                                    backend.update_proposal_content(proposal.id, updated_fields)
+                                    st.success("✅ Proposta atualizada com sucesso!")
+                                    st.session_state[edit_key] = False
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"❌ Erro ao salvar alterações: {e}")
+        else:
+            st.info("🎉 Nenhuma proposta pendente. Todas as propostas foram revisadas!")
+    
+    with tab2:
+        if approved_proposals:
+            for proposal in approved_proposals:
+                with st.expander(f"✅ {proposal.title} (ID: {proposal.id[:8]}...)", expanded=False):
+                    st.success(f"Aprovado em: {proposal.approved_at.strftime('%d/%m/%Y %H:%M') if proposal.approved_at else 'N/A'}")
+                    st.write(proposal.description)
+                    # Mostrar Valor e Prazo com mesmo estilo dos formulários
+                    st.markdown(f"**Valor:** <span style='font-size:16px'>{format_currency(proposal.estimated_value_moai)}</span>", unsafe_allow_html=True)
+                    st.markdown(f"**Prazo:** <span style='font-size:16px'>{proposal.estimated_time_moai}</span>", unsafe_allow_html=True)
+                    if st.button("📄 Ver Detalhes", key=f"view_approved_{proposal.id}"):
+                        st.write(proposal.solution_proposal_moai)
+        else:
+            st.info("📭 Nenhuma proposta aprovada ainda.")
+    
+    with tab3:
+        if rejected_proposals:
+            for proposal in rejected_proposals:
+                with st.expander(f"❌ {proposal.title} (ID: {proposal.id[:8]}...)", expanded=False):
+                    st.error(f"Rejeitado em: {proposal.submitted_at.strftime('%d/%m/%Y %H:%M')}")
+                    st.write(proposal.description)
+        else:
+            st.info("📭 Nenhuma proposta rejeitada.")
 
 
 def project_timeline_page():
@@ -576,12 +628,13 @@ def infra_backup_management_page():
 
         st.markdown("---")
         st.subheader("Gestão de Backups (AID):")
-        backup_info = backend.aid_agent.get_backup_status(selected_project_id) # Usando AID diretamente
-        if backup_info:
-            st.write(f"**Último Backup:** {backup_info.get('last_backup', 'N/A')}")
-            st.write(f"**Frequência:** {backup_info.get('frequency', 'N/A')}")
-            st.write(f"**Retenção:** {backup_info.get('retention_policy', 'N/A')}")
-            st.write(f"**Status:** {backup_info.get('status', 'N/A')}")
+        backup_info = backend.aid_agent.configure_backups(selected_project_id, "Projeto Backup") # Obtém informações de backup
+        if backup_info and backup_info.get('success'):
+            details = backup_info.get('details', {})
+            st.write(f"**Política de Backup:** {details.get('policy_data', 'N/A')}")
+            st.write(f"**Último Status:** {details.get('last_backup_status', 'N/A')}")
+            st.write(f"**Próximo Backup Agendado:** {details.get('next_scheduled_backup', 'N/A')}")
+            st.write(f"**Mensagem:** {backup_info.get('message', 'N/A')}")
 
             col_backup_buttons = st.columns(2)
             with col_backup_buttons[0]:
@@ -692,15 +745,15 @@ def moai_communication_page():
 def project_management_page():
     st.header("🚧 Gestão de Projetos")
     st.markdown("""
-    Gerencie os detalhes dos projetos, acompanhe o progresso e faça ajustes.
+    Gerencie os detalhes dos projetos, acompanhe o progresso e faça ajustes em tempo real.
     """)
 
-    all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+    all_projects = backend.get_all_projects()
     if not all_projects:
-        st.info("Nenhum projeto ativo para gerenciar.")
+        st.info("🎉 Nenhum projeto ativo para gerenciar no momento.")
         return
     
-    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
     selected_project_key = st.selectbox(
         "Selecione um Projeto para Gerenciar",
         options=list(project_options_display.keys()),
@@ -712,126 +765,164 @@ def project_management_page():
         project = backend.get_project_by_id(selected_project_id)
 
         if project:
-            st.subheader(f"Detalhes do Projeto: {project.name} (ID: {project.id[:8]}...)") # CORRIGIDO: project.id
+            # Header com informações principais
+            col_header1, col_header2, col_header3, col_header4 = st.columns(4)
+            with col_header1:
+                st.metric("📊 Progresso", f"{project.progress}%")
+            with col_header2:
+                status_emoji = {"active": "🟢", "on hold": "🟡", "completed": "✅", "cancelled": "⛔"}.get(project.status, "❓")
+                st.metric("Status", f"{status_emoji} {project.status.title()}")
+            with col_header3:
+                st.metric("👤 Cliente", project.client_name[:20] + ("..." if len(project.client_name) > 20 else ""))
+            with col_header4:
+                st.metric("📅 Iniciado", project.started_at.strftime('%d/%m/%Y'))
 
-            col_info_1, col_info_2 = st.columns(2)
-            with col_info_1:
-                st.write(f"**Cliente:** {project.client_name}")
-                st.write(f"**Status:** {project.status}")
-                st.write(f"**Iniciado em:** {project.started_at.strftime('%Y-%m-%d')}")
-            with col_info_2:
-                st.write(f"**Progresso:** {project.progress}%")
-                if project.completed_at:
-                    st.write(f"**Concluído em:** {project.completed_at.strftime('%Y-%m-%d')}")
-                else:
-                    st.write("**Concluído em:** N/A")
+            st.divider()
 
-            # Editar detalhes básicos do projeto
-            edit_project_basic_key = f"edit_project_basic_{project.id}"
-            if edit_project_basic_key not in st.session_state:
-                st.session_state[edit_project_basic_key] = False
+            # Abas para diferentes seções
+            tab_details, tab_proposal, tab_edit = st.tabs(["📋 Detalhes", "📄 Proposta Original", "✏️ Editar"])
+            
+            with tab_details:
+                st.subheader(f"Informações do Projeto: {project.name}")
+                
+                col_detail1, col_detail2 = st.columns(2)
+                with col_detail1:
+                    st.markdown("**Identificação**")
+                    st.write(f"ID: `{project.id}`")
+                    st.write(f"Nome: {project.name}")
+                    st.write(f"Cliente: {project.client_name}")
+                
+                with col_detail2:
+                    st.markdown("**Cronograma**")
+                    st.write(f"Iniciado em: {project.started_at.strftime('%d/%m/%Y %H:%M')}")
+                    if project.completed_at:
+                        st.write(f"Concluído em: {project.completed_at.strftime('%d/%m/%Y %H:%M')}")
+                    else:
+                        st.write("Status: Em Andamento")
+                
+                st.markdown("**Progresso**")
+                st.progress(project.progress / 100, text=f"{project.progress}%")
+            
+            with tab_proposal:
+                st.subheader("📄 Especificações da Proposta Original")
+                proposal = backend.get_proposal_by_id(project.proposal_id)
 
-            if st.button("✏️ Editar Detalhes Básicos do Projeto", key=f"btn_edit_proj_basic_{project.id}", use_container_width=True): # CORRIGIDO: project.id
-                st.session_state[edit_project_basic_key] = not st.session_state[edit_project_basic_key]
-                st.rerun()
-
-            if st.session_state[edit_project_basic_key]:
-                st.subheader(f"Editar Dados Básicos do Projeto {project.id[:8]}...")
-                with st.form(key=f"form_edit_project_basic_{project.id}"):
-                    edited_project_name = st.text_input("Nome do Projeto", value=project.name)
-                    edited_client_name = st.text_input("Nome do Cliente", value=project.client_name)
-                    edited_status = st.selectbox("Status", options=["active", "on hold", "completed", "cancelled"], index=["active", "on hold", "completed", "cancelled"].index(project.status))
-                    edited_progress = st.slider("Progresso (%)", min_value=0, max_value=100, value=project.progress)
+                if proposal:
+                    col_prop1, col_prop2 = st.columns(2)
+                    with col_prop1:
+                        st.write(f"**Título:** {proposal.title}")
+                        st.write(f"**Status:** {proposal.status}")
+                    with col_prop2:
+                        st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
+                        st.write(f"**Prazo Estimado:** {proposal.estimated_time_moai}")
                     
-                    save_basic_changes = st.form_submit_button("Salvar Detalhes Básicos")
-                    if save_basic_changes:
+                    st.write(f"**Descrição:** {proposal.description}")
+                    
+                    st.markdown("### 🔍 Entendimento do Problema")
+                    st.write(proposal.problem_understanding_moai)
+                    
+                    st.markdown("### 💡 Solução Proposta")
+                    st.write(proposal.solution_proposal_moai)
+                    
+                    col_tech1, col_tech2 = st.columns(2)
+                    with col_tech1:
+                        st.markdown("### 📊 Escopo")
+                        st.write(proposal.scope_moai)
+                    with col_tech2:
+                        st.markdown("### 🛠️ Tecnologias")
+                        st.write(proposal.technologies_suggested_moai)
+                    
+                    st.markdown("### 📋 Termos e Condições")
+                    st.write(proposal.terms_conditions_moai)
+                else:
+                    st.warning("⚠️ Proposta associada não encontrada ou não está acessível.")
+            
+            with tab_edit:
+                st.subheader(f"✏️ Editar Projeto: {project.name}")
+                
+                st.markdown("### 📝 Dados Básicos do Projeto")
+                with st.form(key=f"form_edit_project_{project.id}"):
+                    col_edit1, col_edit2 = st.columns(2)
+                    with col_edit1:
+                        edited_project_name = st.text_input("Nome do Projeto", value=project.name)
+                        edited_client_name = st.text_input("Nome do Cliente", value=project.client_name)
+                    with col_edit2:
+                        edited_status = st.selectbox("Status do Projeto", 
+                            options=["active", "on hold", "completed", "cancelled"], 
+                            index=["active", "on hold", "completed", "cancelled"].index(project.status))
+                        edited_progress = st.slider("Progresso (%)", min_value=0, max_value=100, value=project.progress)
+                    
+                    st.divider()
+                    st.markdown("### 🔧 Editar Especificações da Proposta")
+                    
+                    proposal = backend.get_proposal_by_id(project.proposal_id)
+                    if proposal:
+                        col_edit_title = st.columns(1)
+                        edited_proposal_title = st.text_input("Título da Proposta", value=proposal.title)
+                        
+                        edited_problem_understanding = st.text_area("🔍 Entendimento do Problema", value=proposal.problem_understanding_moai, height=100)
+                        edited_solution_proposal = st.text_area("💡 Solução Proposta", value=proposal.solution_proposal_moai, height=100)
+                        
+                        col_edit_scope = st.columns(2)
+                        with col_edit_scope[0]:
+                            edited_scope = st.text_area("📊 Escopo", value=proposal.scope_moai, height=80)
+                        with col_edit_scope[1]:
+                            edited_technologies = st.text_area("🛠️ Tecnologias", value=proposal.technologies_suggested_moai, height=80)
+                        
+                        col_edit_est = st.columns(2)
+                        with col_edit_est[0]:
+                            edited_estimated_value_str = st.text_input("💰 Valor Estimado (R$)", value=format_currency(proposal.estimated_value_moai))
+                        with col_edit_est[1]:
+                            edited_estimated_time = st.text_input("⏱️ Prazo Estimado", value=proposal.estimated_time_moai)
+                        
+                        edited_terms_conditions = st.text_area("📋 Termos e Condições", value=proposal.terms_conditions_moai, height=80)
+                    
+                    col_buttons = st.columns(2)
+                    with col_buttons[0]:
+                        save_changes = st.form_submit_button("💾 Salvar Todas as Alterações", use_container_width=True)
+                    with col_buttons[1]:
+                        cancel_edit = st.form_submit_button("❌ Cancelar", use_container_width=True)
+                    
+                    if save_changes:
                         try:
-                            updated_fields = {
+                            # Atualizar projeto
+                            updated_project_fields = {
                                 "name": edited_project_name,
                                 "client_name": edited_client_name,
                                 "status": edited_status,
                                 "progress": edited_progress
                             }
                             if edited_status == "completed" and not project.completed_at:
-                                updated_fields["completed_at"] = datetime.datetime.now()
+                                updated_project_fields["completed_at"] = datetime.datetime.now()
                             elif edited_status != "completed" and project.completed_at:
-                                updated_fields["completed_at"] = None # Remove data de conclusão se não estiver mais completo
+                                updated_project_fields["completed_at"] = None
 
-                            backend.update_project_details(project.id, updated_fields)
-                            st.success(f"Detalhes do projeto {project.id[:8]}... atualizados com sucesso!") # CORRIGIDO: project.id
-                            st.session_state[edit_project_basic_key] = False
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao salvar detalhes básicos: {e}")
-            
-            st.markdown("---")
-            st.subheader("Especificações da Proposta Original:")
-            proposal = backend.get_proposal_by_id(project.proposal_id)
-            if proposal:
-                st.write(f"**Título:** {proposal.title}")
-                st.write(f"**Descrição:** {proposal.description}")
-                st.write(f"**Status da Proposta:** {proposal.status}")
-                st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
-                st.write(f"**Prazo Estimado:** {proposal.estimated_time_moai}")
-                
-                edit_proposal_spec_key = f"edit_proposal_spec_{proposal.id}"
-                if edit_proposal_spec_key not in st.session_state:
-                    st.session_state[edit_proposal_spec_key] = False
-
-                if st.button("✏️ Revisar Especificações da Proposta", key=f"btn_edit_prop_spec_{proposal.id}", use_container_width=True):
-                    st.session_state[edit_proposal_spec_key] = not st.session_state[edit_proposal_spec_key]
-                    st.rerun()
-                
-                if st.session_state[edit_proposal_spec_key]:
-                    st.subheader(f"Editar Especificações da Proposta {proposal.id[:8]}...")
-                    with st.form(key=f"form_edit_proposal_spec_{proposal.id}"):
-                        edited_proposal_title = st.text_input("Título da Proposta", value=proposal.title)
-                        edited_problem_understanding = st.text_area("Entendimento do Problema (MOAI)", value=proposal.problem_understanding_moai)
-                        edited_solution_proposal = st.text_area("Proposta de Solução (MOAI)", value=proposal.solution_proposal_moai)
-                        edited_scope = st.text_area("Escopo (MOAI)", value=proposal.scope_moai)
-                        edited_technologies = st.text_area("Tecnologias Sugeridas (MOAI)", value=proposal.technologies_suggested_moai)
-                        edited_estimated_value_str = st.text_input("Valor Estimado (R\$)", value=format_currency(proposal.estimated_value_moai))
-                        edited_estimated_time = st.text_input("Prazo Estimado", value=proposal.estimated_time_moai)
-                        edited_terms_conditions = st.text_area("Termos e Condições (MOAI)", value=proposal.terms_conditions_moai)
-                        
-                        save_spec_changes = st.form_submit_button("Salvar Especificações da Proposta")
-                        if save_spec_changes:
-                            try:
+                            backend.update_project_details(project.id, updated_project_fields)
+                            
+                            # Atualizar proposta se houver
+                            if proposal:
                                 updated_proposal_fields = {
                                     "title": edited_proposal_title,
                                     "problem_understanding_moai": edited_problem_understanding,
                                     "solution_proposal_moai": edited_solution_proposal,
                                     "scope_moai": edited_scope,
                                     "technologies_suggested_moai": edited_technologies,
-                                    "estimated_value_moai": edited_estimated_value_str, # Passa string, backend converterá
+                                    "estimated_value_moai": edited_estimated_value_str,
                                     "estimated_time_moai": edited_estimated_time,
                                     "terms_conditions_moai": edited_terms_conditions
                                 }
                                 backend.update_proposal_content(proposal.id, updated_proposal_fields)
-                                st.success(f"Especificações da proposta {proposal.id[:8]}... (projeto {project.id[:8]}...) atualizadas com sucesso!") # CORRIGIDO: project.id
-                                st.session_state[edit_proposal_spec_key] = False
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro ao salvar especificações da proposta: {e}. Certifique-se de que o valor estimado é um número válido.")
-                else:
-                    st.subheader("1. Entendimento do Problema (MOAI):")
-                    st.markdown(proposal.problem_understanding_moai)
-                    st.subheader("2. Proposta de Solução (MOAI):")
-                    st.markdown(proposal.solution_proposal_moai)
-                    st.subheader("3. Escopo (MOAI):")
-                    st.markdown(proposal.scope_moai)
-                    st.subheader("4. Tecnologias Sugeridas (MOAI):")
-                    st.markdown(proposal.technologies_suggested_moai)
-                    st.subheader("5. Estimativas (MOAI):")
-                    st.write(f"**Valor Estimado:** {format_currency(proposal.estimated_value_moai)}")
-                    st.write(f"**Prazo Estimado:** {proposal.estimated_time_moai}")
-                    st.subheader("6. Termos e Condições (MOAI):")
-                    st.markdown(proposal.terms_conditions_moai)
-            else:
-                st.warning("Proposta associada não encontrada ou acessível.")
+                            
+                            st.success("✅ Projeto e proposta atualizados com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Erro ao salvar alterações: {e}")
+            
+            if proposal:
+                st.markdown("--- \n _O MOAI garante que todas as revisões sejam documentadas e orquestradas._")
         else:
-            st.info("Nenhuma proposta associada a este projeto.")
-    st.markdown("--- \n _O MOAI garante que todas as revisões sejam documentadas e orquestradas._")
+            st.info("🎉 Nenhum projeto encontrado.")
+    st.markdown("---")
 
 
 def about_page():

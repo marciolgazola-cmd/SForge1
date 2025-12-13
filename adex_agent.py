@@ -2,24 +2,26 @@
 import uuid
 import datetime
 import random
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta de código do ADE-X ---
 class ADEXCodeResponse(BaseModel):
-    filename: str = Field(..., description="Nome do arquivo de código gerado.")
-    language: str = Field(..., description="Linguagem de programação do código (ex: Python, JavaScript).")
-    content: str = Field(..., description="Conteúdo do código gerado.")
-    description: str = Field(..., description="Breve descrição do que este bloco de código faz.")
+    filename: Optional[str] = Field(None, description="Nome do arquivo de código gerado.")
+    language: Optional[str] = Field(None, description="Linguagem de programação do código (ex: Python, JavaScript).")
+    content: Optional[str] = Field(None, description="Conteúdo do código gerado.")
+    description: Optional[str] = Field(None, description="Breve descrição do que este bloco de código faz.")
 
 class ADEXAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("ADEXAgent inicializado e pronto para gerar código.")
+        self.model = get_agent_model('ADEX')  # codellama para código especializado
+        logging.info(f"ADEXAgent inicializado com modelo {self.model} e pronto para gerar código.")
 
     def generate_code(self, project_name: str, client_name: str, task_description: str) -> Dict[str, Any]:
         logging.info(f"ADEXAgent: Iniciando geração de código para '{task_description}' do projeto '{project_name}'...")
@@ -42,7 +44,7 @@ class ADEXAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=ADEXCodeResponse)
+            response_obj = self.llm_simulator.chat(messages, response_model=ADEXCodeResponse, model_override=self.model)
             logging.info(f"ADEXAgent: Geração de código concluída para '{task_description}' do projeto '{project_name}'.")
             return response_obj.dict()
         except (LLMConnectionError, LLMGenerationError) as e:

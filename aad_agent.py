@@ -1,24 +1,26 @@
 # aad_agent.py
 import uuid
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
+from agent_model_mapping import get_agent_model
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # --- Modelo Pydantic para a resposta do AAD ---
 class AADResponse(BaseModel):
-    solution_proposal: str = Field(..., description="Proposta de solução de alto nível.")
-    scope: str = Field(..., description="Escopo detalhado da solução, incluindo funcionalidades e módulos.")
-    technologies_suggested: str = Field(..., description="Tecnologias sugeridas para o desenvolvimento da solução.")
-    architecture_overview: str = Field(..., description="Visão geral da arquitetura proposta.")
-    main_components: List[str] = Field(..., description="Lista dos principais componentes da solução.")
+    solution_proposal: Optional[str] = Field(None, description="Proposta de solução de alto nível.")
+    scope: Optional[str] = Field(None, description="Escopo detalhado da solução, incluindo funcionalidades e módulos.")
+    technologies_suggested: Optional[str] = Field(None, description="Tecnologias sugeridas para o desenvolvimento da solução.")
+    architecture_overview: Optional[str] = Field(None, description="Visão geral da arquitetura proposta.")
+    main_components: List[str] = Field(default_factory=list, description="Lista dos principais componentes da solução.")
 
 class AADAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        logging.info("AADAgent inicializado e pronto para projetar soluções.")
+        self.model = get_agent_model('AAD')  # mistral para design versátil
+        logging.info(f"AADAgent inicializado com modelo {self.model} e pronto para projetar soluções.")
 
     def design_solution(self, req_analysis: str, req_data: Dict[str, Any]) -> Dict[str, str]:
         logging.info(f"AADAgent: Iniciando design da solução para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
@@ -51,7 +53,7 @@ class AADAgent:
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=AADResponse)
+            response_obj = self.llm_simulator.chat(messages, response_model=AADResponse, model_override=self.model)
             logging.info(f"AADAgent: Design da solução concluído para '{req_data.get('nome_projeto', 'N/A')}'.")
             
             # Retorna um dicionário com os campos, como o MOAI espera para preencher a proposta
