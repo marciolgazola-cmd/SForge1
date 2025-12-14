@@ -56,3 +56,5 @@ class ADEXAgent:
         except Exception as e:
             logger.error(f"ADEXAgent: Erro inesperado ao gerar código: {e}")
             return {"error": str(e), "message": f"Erro inesperado na geração de código: {e}", "filename": "error.txt", "language": "text", "content": "# Erro inesperado", "description": ""}
+
+
