@@ -1,102 +1,61 @@
 # ara_agent.py
-import uuid
-from typing import Dict, Any, List, Optional
+import logging
+import json # Adicionado
+from typing import Dict, Any, List, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from agent_model_mapping import get_agent_model
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-# --- Modelo Pydantic para a resposta do ARA ---
-class ARAResponse(BaseModel):
-    problem_understanding: Optional[str] = Field(None, description="Análise detalhada do problema de negócio do cliente.")
-    key_requirements: List[str] = Field(default_factory=list, description="Lista de requisitos chave extraídos.")
-    implicit_requirements: List[str] = Field(default_factory=list, description="Lista de requisitos implícitos ou não explicitados.")
-    assumptions: List[str] = Field(default_factory=list, description="Suposições feitas para a análise.")
-    constraints: List[str] = Field(default_factory=list, description="Restrições identificadas.")
-    proposed_next_steps: Optional[str] = Field(None, description="Próximos passos sugeridos pelo ARA.")
-
-class ARAResponseOld(BaseModel): # Modelo antigo para compatibilidade em caso de falha de parsing do novo.
-    problem_understanding: str = Field(..., description="Análise detalhada do problema de negócio do cliente.")
+# Exemplo de modelo de saída para o ARA, se ele usar response_model
+class ARAOutput(BaseModel):
+    summary: str = Field(description="Um resumo conciso dos requisitos do cliente.")
+    key_features: List[str] = Field(description="Lista das principais funcionalidades identificadas.")
+    risks: List[str] = Field(description="Potenciais riscos e desafios.")
+    estimated_effort: str = Field(description="Estimativa de esforço ou complexidade inicial.")
 
 class ARAAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        self.model = get_agent_model('ARA')  # llama3 para análise profunda
-        logging.info(f"ARAAgent inicializado com modelo {self.model} e pronto para analisar requisitos.")
+        self.model_name = get_agent_model('ARA') # Obtém o modelo para ARA
+        logger.info(f"ARAAgent inicializado com modelo {self.model_name} e pronto para analisar requisitos.")
 
-    def analyze_requirements(self, req_data: Dict[str, Any]) -> str:
-        logging.info(f"ARAAgent: Iniciando análise de requisitos para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
-
+    def analyze_requirements(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analisa os requisitos brutos do cliente e os refina.
+        """
         prompt = f"""
-        Com base nos seguintes requisitos do cliente, elabore uma "Análise de Requisitos" detalhada.
-        Identifique o problema de negócio, requisitos chave (funcionais e não funcionais),
-        requisitos implícitos, suposições e restrições.
+        Analise os seguintes requisitos do cliente e forneça um resumo conciso,
+        identifique as principais funcionalidades esperadas, liste potenciais riscos
+        e estime o esforço inicial.
 
-        Dados do Cliente:
-        Nome do Projeto: {req_data.get('nome_projeto', 'N/A')}
-        Nome do Cliente: {req_data.get('nome_cliente', 'N/A')}
-        Problema de Negócio: {req_data.get('problema_negocio', 'N/A')}
-        Objetivos do Projeto: {req_data.get('objetivos_projeto', 'N/A')}
-        Funcionalidades Esperadas: {req_data.get('funcionalidades_esperadas', 'N/A')}
-        Restrições: {req_data.get('restricoes', 'N/A')}
-        Público-alvo: {req_data.get('publico_alvo', 'N/A')}
+        Requisitos do Cliente:
+        {json.dumps(requirements, indent=2, ensure_ascii=False)}
 
-        Sua resposta deve ser um JSON estritamente conforme o modelo ARAResponse Pydantic.
+        Sua resposta deve ser um objeto JSON.
         """
 
-        system_message = "Você é o Agente de Análise de Requisitos (ARA) da Synapse Forge. Sua função é traduzir requisitos brutos de clientes em uma análise estruturada e compreensível, identificando claramente problemas, requisitos, suposições e restrições."
-        
         messages = [
-            {'role': 'system', 'content': system_message},
-            {'role': 'user', 'content': prompt}
+            {"role": "system", "content": "Você é um Agente de Análise de Requisitos (ARA). Sua tarefa é refinar e estruturar os requisitos do cliente de forma clara e objetiva."
+                                                "Sua saída deve ser um JSON estritamente no formato do esquema Pydantic para ARAOutput."},
+            {"role": "user", "content": prompt}
         ]
 
         try:
-            # Chama o método chat do LLMSimulator com modelo override (llama3 para análise profunda)
-            response_obj = self.llm_simulator.chat(messages, response_model=ARAResponse, model_override=self.model)
-            logging.info(f"ARAAgent: Análise de requisitos concluída para '{req_data.get('nome_projeto', 'N/A')}'.")
-            
-            # Retorna uma string formatada ou o JSON bruto, dependendo de como o MOAI espera consumir
-            # Para manter compatibilidade com o que MOAI espera (uma string markdown), vou formatar aqui.
-            formatted_response = f"""
-**Análise do Problema de Negócio:**
-{response_obj.problem_understanding}
-
-**Requisitos Chave:**
-{'- ' + '\n- '.join(response_obj.key_requirements)}
-
-**Requisitos Implícitos:**
-{'- ' + '\n- '.join(response_obj.implicit_requirements)}
-
-**Suposições:**
-{'- ' + '\n- '.join(response_obj.assumptions)}
-
-**Restrições:**
-{'- ' + '\n- '.join(response_obj.constraints)}
-
-**Próximos Passos Sugeridos:**
-{response_obj.proposed_next_steps}
-"""
-            return formatted_response
-
+            # Passa o nome do modelo explicitamente e força json_mode
+            response_raw = self.llm_simulator.chat(
+                messages=messages,
+                model=self.model_name,
+                response_model=ARAOutput,
+                json_mode=True
+            )
+            response: ARAOutput = cast(ARAOutput, response_raw) # Cast para informar o Pylance
+            logger.info(f"ARAAgent: Requisitos analisados com sucesso usando {self.model_name}.")
+            return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logging.error(f"ARAAgent: Falha ao analisar requisitos para '{req_data.get('nome_projeto', 'N/A')}'. Erro: {e}")
-            # Em caso de erro, tenta gerar uma resposta mais simples ou retorna uma mensagem de erro
-            error_message = f"Erro ao analisar requisitos com o LLM: {e}. Gerando análise simplificada."
-            logging.warning(error_message)
-            # Tenta um fallback com uma resposta menos estruturada, se o LLM falhou no Pydantic
-            try:
-                # Tenta novamente, mas sem o response_model para ver se retorna texto simples
-                simple_text_response = self.llm_simulator.chat(messages) 
-                if simple_text_response:
-                     return f"**Análise Simplificada (Erro LLM Anterior):**\n{simple_text_response}"
-                else:
-                    return f"**Análise de Requisitos Simplificada (Erro LLM):**\nO LLM não conseguiu gerar uma análise detalhada. {error_message}"
-            except Exception as inner_e:
-                logging.error(f"ARAAgent: Falha total ao tentar fallback para análise simples: {inner_e}")
-                return f"**Análise de Requisitos Indisponível:**\nNão foi possível obter uma análise devido a erros de comunicação com o LLM. {error_message}"
+            logger.error(f"ARAAgent: Falha ao analisar requisitos com o LLM {self.model_name}. Erro: {e}")
+            return {"error": str(e), "message": f"Falha na análise de requisitos: {e}", "summary": "(Erro na análise)"}
         except Exception as e:
-            logging.error(f"ARAAgent: Erro inesperado ao analisar requisitos: {e}")
-            return f"**Análise de Requisitos Indisponível (Erro Interno):**\nUm erro inesperado ocorreu: {e}"
+            logger.error(f"ARAAgent: Erro inesperado ao analisar requisitos: {e}")
+            return {"error": str(e), "message": f"Erro inesperado na análise de requisitos: {e}", "summary": "(Erro inesperado)"}

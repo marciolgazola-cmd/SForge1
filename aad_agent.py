@@ -1,98 +1,61 @@
 # aad_agent.py
-import uuid
-from typing import Dict, Any, List, Optional
+import logging
+import json # Adicionado
+from typing import Dict, Any, List, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from agent_model_mapping import get_agent_model
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-# --- Modelo Pydantic para a resposta do AAD ---
-class AADResponse(BaseModel):
-    solution_proposal: Optional[str] = Field(None, description="Proposta de solução de alto nível.")
-    scope: Optional[str] = Field(None, description="Escopo detalhado da solução, incluindo funcionalidades e módulos.")
-    technologies_suggested: Optional[str] = Field(None, description="Tecnologias sugeridas para o desenvolvimento da solução.")
-    architecture_overview: Optional[str] = Field(None, description="Visão geral da arquitetura proposta.")
-    main_components: List[str] = Field(default_factory=list, description="Lista dos principais componentes da solução.")
+# Exemplo de modelo de saída para o AAD
+class AADSolutionOutput(BaseModel):
+    architecture_overview: str = Field(description="Visão geral da arquitetura proposta.")
+    tech_stack: List[str] = Field(description="Tecnologias recomendadas (linguagens, frameworks, bancos de dados)." )
+    modules: List[Dict[str, str]] = Field(description="Lista de módulos principais com suas responsabilidades.")
+    diagram_description: str = Field(description="Descrição para gerar um diagrama de arquitetura.")
 
 class AADAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        self.model = get_agent_model('AAD')  # mistral para design versátil
-        logging.info(f"AADAgent inicializado com modelo {self.model} e pronto para projetar soluções.")
+        self.model_name = get_agent_model('AAD') # Obtém o modelo para AAD
+        logger.info(f"AADAgent inicializado com modelo {self.model_name} e pronto para projetar soluções.")
 
-    def design_solution(self, req_analysis: str, req_data: Dict[str, Any]) -> Dict[str, str]:
-        logging.info(f"AADAgent: Iniciando design da solução para o projeto '{req_data.get('nome_projeto', 'N/A')}'...")
-
+    def design_solution(self, project_name: str, refined_requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Cria uma proposta de arquitetura e design com base nos requisitos refinados.
+        """
         prompt = f"""
-        Com base na análise de requisitos fornecida e nos dados originais do cliente,
-        proponha uma solução de TI robusta. Detalhe a proposta da solução, o escopo,
-        as tecnologias sugeridas, uma visão geral da arquitetura e os principais componentes.
+        Com base nos requisitos refinados para o projeto '{project_name}', crie uma proposta de arquitetura e design.
+        Inclua uma visão geral da arquitetura, a pilha tecnológica recomendada, módulos principais com suas responsabilidades
+        e uma descrição para gerar um diagrama de arquitetura.
 
-        Análise de Requisitos (pelo ARA):
-        {req_analysis}
+        Requisitos Refinados:
+        {json.dumps(refined_requirements, indent=2, ensure_ascii=False)}
 
-        Dados Originais do Cliente:
-        Nome do Projeto: {req_data.get('nome_projeto', 'N/A')}
-        Nome do Cliente: {req_data.get('nome_cliente', 'N/A')}
-        Problema de Negócio: {req_data.get('problema_negocio', 'N/A')}
-        Objetivos do Projeto: {req_data.get('objetivos_projeto', 'N/A')}
-        Funcionalidades Esperadas: {req_data.get('funcionalidades_esperadas', 'N/A')}
-        Restrições: {req_data.get('restricoes', 'N/A')}
-        Público-alvo: {req_data.get('publico_alvo', 'N/A')}
-
-        Sua resposta deve ser um JSON estritamente conforme o modelo AADResponse Pydantic.
+        Sua resposta deve ser um objeto JSON.
         """
 
-        system_message = "Você é o Agente de Arquitetura e Design (AAD) da Synapse Forge. Sua função é transformar a análise de requisitos em uma proposta de solução técnica detalhada, incluindo arquitetura e tecnologias."
-        
         messages = [
-            {'role': 'system', 'content': system_message},
-            {'role': 'user', 'content': prompt}
+            {"role": "system", "content": "Você é um Agente de Arquitetura e Design (AAD). Sua tarefa é traduzir requisitos em um design de solução técnico e claro."
+                                                "Sua saída deve ser um JSON estritamente no formato do esquema Pydantic para AADSolutionOutput."},
+            {"role": "user", "content": prompt}
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=AADResponse, model_override=self.model)
-            logging.info(f"AADAgent: Design da solução concluído para '{req_data.get('nome_projeto', 'N/A')}'.")
-            
-            # Retorna um dicionário com os campos, como o MOAI espera para preencher a proposta
-            return {
-                "solution_proposal": response_obj.solution_proposal,
-                "scope": response_obj.scope,
-                "technologies_suggested": response_obj.technologies_suggested,
-                "architecture_overview": response_obj.architecture_overview,
-                "main_components": '\n- '.join(response_obj.main_components) # Convertendo para string para facilitar o display
-            }
+            # Passa o nome do modelo explicitamente e força json_mode
+            response_raw = self.llm_simulator.chat(
+                messages=messages,
+                model=self.model_name,
+                response_model=AADSolutionOutput,
+                json_mode=True
+            )
+            response: AADSolutionOutput = cast(AADSolutionOutput, response_raw) # Cast para informar o Pylance
+            logger.info(f"AADAgent: Solução projetada com sucesso usando {self.model_name}.")
+            return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logging.error(f"AADAgent: Falha ao projetar a solução para '{req_data.get('nome_projeto', 'N/A')}'. Erro: {e}")
-            # Em caso de erro, tenta gerar uma resposta mais simples ou retorna uma mensagem de erro
-            error_message = f"Erro ao projetar a solução com o LLM: {e}. Gerando design simplificado."
-            logging.warning(error_message)
-            try:
-                simple_text_response = self.llm_simulator.chat(messages)
-                return {
-                    "solution_proposal": simple_text_response if simple_text_response else f"Solução Simplificada (Erro LLM): {error_message}",
-                    "scope": f"Escopo Simplificado (Erro LLM): {error_message}",
-                    "technologies_suggested": f"Tecnologias Simplificadas (Erro LLM): {error_message}",
-                    "architecture_overview": f"Arquitetura Simplificada (Erro LLM): {error_message}",
-                    "main_components": f"Componentes Simplificados (Erro LLM): {error_message}"
-                }
-            except Exception as inner_e:
-                logging.error(f"AADAgent: Falha total ao tentar fallback para design simples: {inner_e}")
-                return {
-                    "solution_proposal": f"Solução Indisponível (Erro Interno): {error_message}",
-                    "scope": f"Escopo Indisponível (Erro Interno): {error_message}",
-                    "technologies_suggested": f"Tecnologias Indisponíveis (Erro Interno): {error_message}",
-                    "architecture_overview": f"Arquitetura Indisponível (Erro Interno): {error_message}",
-                    "main_components": f"Componentes Indisponíveis (Erro Interno): {error_message}"
-                }
+            logger.error(f"AADAgent: Falha ao projetar solução com o LLM {self.model_name}. Erro: {e}")
+            return {"error": str(e), "message": f"Falha no design da solução: {e}", "architecture_overview": "(Erro no design)"}
         except Exception as e:
-            logging.error(f"AADAgent: Erro inesperado ao projetar a solução: {e}")
-            return {
-                "solution_proposal": f"Solução Indisponível (Erro Interno): {e}",
-                "scope": f"Escopo Indisponível (Erro Interno): {e}",
-                "technologies_suggested": f"Tecnologias Indisponíveis (Erro Interno): {e}",
-                "architecture_overview": f"Arquitetura Indisponível (Erro Interno): {e}",
-                "main_components": f"Componentes Indisponíveis (Erro Interno): {e}"
-            }
+            logger.error(f"AADAgent: Erro inesperado ao projetar solução: {e}")
+            return {"error": str(e), "message": f"Erro inesperado no design da solução: {e}", "architecture_overview": "(Erro inesperado)"}

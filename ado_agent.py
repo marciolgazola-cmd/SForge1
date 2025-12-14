@@ -1,85 +1,71 @@
 # ado_agent.py
-import uuid
-import datetime
-from typing import Dict, Any, List, Optional
+import logging
+import json
+from typing import Dict, Any, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from agent_model_mapping import get_agent_model
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
-# --- Modelo Pydantic para a resposta do ADO ---
-class ADOResponse(BaseModel):
-    filename: Optional[str] = Field(None, description="Nome do arquivo da documentação gerada.")
-    content: Optional[str] = Field(None, description="Conteúdo completo da documentação em formato Markdown.")
-    document_type: Optional[str] = Field(None, description="Tipo de documento (ex: 'Manual do Usuário', 'Documentação Técnica').")
-    version: Optional[str] = Field("1.0", description="Versão do documento.")
-    last_updated: Optional[str] = Field(None, description="Data e hora da última atualização.")
+# Exemplo de modelo de saída para o ADO
+class DocumentationOutput(BaseModel):
+    filename: str = Field(description="Nome do arquivo da documentação (ex: 'README.md', 'Manual_Usuario.pdf').")
+    document_type: str = Field(description="Tipo de documentação (ex: 'Documentação Técnica', 'Manual do Usuário').")
+    version: str = Field(description="Versão da documentação.")
+    content: str = Field(description="O conteúdo completo da documentação em formato Markdown.")
 
 class ADOAgent:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
-        self.model = get_agent_model('ADO')  # mistral para documentação clara
-        logging.info(f"ADOAgent inicializado com modelo {self.model} e pronto para documentar projetos.")
+        self.model_name = get_agent_model('ADO') # Obtém o modelo para ADO
+        logger.info(f"ADOAgent inicializado com modelo {self.model_name} e pronto para documentar projetos.")
 
     def generate_documentation(self, project_id: str, project_name: str, doc_type: str, relevant_info: str) -> Dict[str, Any]:
-        logging.info(f"ADOAgent: Gerando documentação '{doc_type}' para o projeto '{project_name}' ({project_id})...")
-
+        """
+        Gera documentação para um projeto com base no tipo e informações relevantes.
+        """
         prompt = f"""
-        Gere uma documentação do tipo '{doc_type}' para o projeto '{project_name}' (ID: {project_id}).
-        Utilize as informações relevantes fornecidas para criar um documento completo e claro em formato Markdown.
+        Gere uma '{doc_type}' detalhada para o projeto '{project_name}' (ID: {project_id}).
+        Utilize as informações relevantes fornecidas. A documentação deve ser clara, concisa e formatada em Markdown.
 
         Informações Relevantes:
         {relevant_info}
 
-        A documentação deve ser estruturada e fácil de ler.
-
-        Sua resposta deve ser um JSON estritamente conforme o modelo ADOResponse Pydantic.
+        Sua resposta deve ser um objeto JSON.
         """
 
-        system_message = "Você é o Agente de Documentação (ADO) da Synapse Forge. Sua função é criar documentação técnica e de usuário abrangente e clara para os projetos de software, utilizando formato Markdown."
-        
         messages = [
-            {'role': 'system', 'content': system_message},
-            {'role': 'user', 'content': prompt}
+            {"role": "system", "content": "Você é um Agente de Documentação (ADO). Sua tarefa é criar documentação clara, precisa e atualizada para os projetos."
+                                                "Sua saída deve ser um JSON estritamente no formato do esquema Pydantic para DocumentationOutput."},
+            {"role": "user", "content": prompt}
         ]
 
         try:
-            response_obj = self.llm_simulator.chat(messages, response_model=ADOResponse, model_override=self.model)
-            logging.info(f"ADOAgent: Documentação '{doc_type}' gerada para o projeto '{project_name}' ({project_id}).")
-            return response_obj.dict()
+            # Passa o nome do modelo explicitamente e força json_mode
+            response_raw = self.llm_simulator.chat(
+                messages=messages,
+                model=self.model_name,
+                response_model=DocumentationOutput,
+                json_mode=True
+            )
+            response: DocumentationOutput = cast(DocumentationOutput, response_raw) # Cast para informar o Pylance
+            logger.info(f"ADOAgent: Documentação '{doc_type}' gerada com sucesso usando {self.model_name} para '{project_name}'.")
+            return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logging.error(f"ADOAgent: Falha ao gerar documentação '{doc_type}' para '{project_name}' ({project_id}). Erro: {e}")
-            error_message = f"Erro ao gerar documentação com o LLM: {e}. Gerando documento padrão."
-            logging.warning(error_message)
-            # Fallback para um documento com dados padrão
+            logger.error(f"ADOAgent: Falha ao gerar documentação com o LLM {self.model_name}. Erro: {e}")
+            # Retorno de fallback consistente com a estrutura esperada
             return {
-                "filename": f"fallback_doc_{uuid.uuid4().hex[:8]}.md",
-                "content": f"""
-# Documentação Padrão (Erro na Geração)
-Não foi possível gerar a documentação detalhada para o projeto '{project_name}'
-devido a um erro no LLM.
-
-**Erro:** {e}
-
-Por favor, tente novamente ou verifique a conexão com o LLM.
-""",
+                "filename": f"fallback_doc_{project_id[:8]}.md",
                 "document_type": doc_type,
-                "version": "N/A",
-                "last_updated": datetime.datetime.now().isoformat()
+                "version": "1.0-ERROR",
+                "content": f"# Erro na Geração da Documentação\n\nOcorreu um erro ao gerar a documentação com o LLM: {e}\n\nPor favor, verifique a conexão com o LLM ou o modelo configurado."
             }
         except Exception as e:
-            logging.error(f"ADOAgent: Erro inesperado ao gerar documentação: {e}")
+            logger.error(f"ADOAgent: Erro inesperado ao gerar documentação: {e}")
             return {
-                "filename": f"internal_error_doc_{uuid.uuid4().hex[:8]}.md",
-                "content": f"""
-# Documentação Padrão (Erro Interno)
-Um erro inesperado ocorreu durante a geração da documentação para o projeto '{project_name}':
-
-**Erro:** {e}
-""",
+                "filename": f"fallback_doc_unexpected_error_{project_id[:8]}.md",
                 "document_type": doc_type,
-                "version": "N/A",
-                "last_updated": datetime.datetime.now().isoformat()
+                "version": "1.0-UNEXPECTED_ERROR",
+                "content": f"# Erro Inesperado na Geração da Documentação\n\nOcorreu um erro inesperado: {e}\n\nPor favor, contate o suporte técnico."
             }

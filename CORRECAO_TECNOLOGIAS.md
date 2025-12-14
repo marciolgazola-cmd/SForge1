@@ -1,16 +1,17 @@
 # 🔧 Correção: Validação de Tecnologias Sugeridas
 
 ## Problema Identificado
-```
+
 ❌ Ocorreu um erro inesperado ao gerar a proposta: 
 1 validation error for Proposal
   technologies_suggested_moai
     Input should be a valid string
     [type=string_type, input_value=['Python', 'Frontend', 'Backend'], input_type=list]
-```
 
 ## Causa Raiz
+
 O LLM (através do Ollama/Mistral) estava retornando as tecnologias como uma **lista JSON**:
+
 ```json
 {
   "technologies_suggested_moai": ["Python", "Frontend", "Backend"]
@@ -18,6 +19,7 @@ O LLM (através do Ollama/Mistral) estava retornando as tecnologias como uma **l
 ```
 
 Porém o modelo Pydantic esperava uma **string**:
+
 ```python
 technologies_suggested_moai: Optional[str] = Field(...)
 ```
@@ -25,6 +27,7 @@ technologies_suggested_moai: Optional[str] = Field(...)
 ## Solução Implementada
 
 ### 1. **anp_agent.py** - Modelo ANPProposalContent
+
 Adicionado validador Pydantic que converte listas em strings automaticamente:
 
 ```python
@@ -44,11 +47,14 @@ class ANPProposalContent(BaseModel):
         return str(v) if v else None
 ```
 
-**Resultado**: 
+**Resultado**:
+
 - Input: `["Python", "Frontend", "Backend"]`
+
 - Output: `"Python, Frontend, Backend"`
 
 ### 2. **data_models.py** - Modelo Proposal
+
 Adicionado o mesmo validador no modelo Proposal (camada de persistência):
 
 ```python
@@ -85,6 +91,7 @@ class Proposal(BaseModel):
 ## Fluxo de Dados Corrigido
 
 ```
+
 ANP Agent LLM Response
     ↓
     {"technologies_suggested_moai": ["Python", "Frontend", "Backend"]}

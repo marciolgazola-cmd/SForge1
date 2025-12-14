@@ -14,12 +14,13 @@ from llm_simulator import LLMConnectionError, LLMGenerationError
 # Importa os modelos de dados
 from data_models import Proposal, Project, Documentation, ChatMessage, MOAILog
 # Importa o módulo de tema customizado
-from streamlit_theme import apply_custom_theme, format_status, create_card
+from streamlit_theme import apply_custom_theme, format_status, create_card # Assumindo que estas funções existem e são úteis
 
 # --- Aplicar Tema Customizado ---
 apply_custom_theme()
 
 # Forçar idioma pt-BR e habilitar spellcheck nos inputs/textarea do Streamlit
+# Este snippet é para melhorar a experiência do usuário em navegadores compatíveis.
 components.html("""
 <script>
     document.documentElement.lang = 'pt-BR';
@@ -37,15 +38,19 @@ components.html("""
 """, height=0)
 
 # --- Inicializa o backend (Singleton) ---
+# A inicialização do SynapseForgeBackend (MOAI) agora lida com a conexão Ollama
+# e a inicialização de dados de exemplo de forma mais robusta.
 backend = SynapseForgeBackend()
 
 # --- Funções Auxiliares ---
 def format_currency(value: Optional[float]) -> str:
+    """Formata um valor float para a moeda brasileira (R$)."""
     if value is None:
         return "N/A"
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # --- Inicializa o estado da aplicação (session_state) ---
+# Garante que as variáveis de estado existam ao iniciar ou recarregar a aplicação.
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "dashboard"
 if 'last_chat_message_time' not in st.session_state:
@@ -53,18 +58,21 @@ if 'last_chat_message_time' not in st.session_state:
 
 # --- Funções para Navegação ---
 def navigate_to(page_name: str):
+    """Atualiza a página atual e força um re-run do Streamlit para navegar."""
     st.session_state.current_page = page_name
-    st.rerun() # Force rerun to navigate
+    st.rerun() # Força o re-render para mostrar a nova página.
 
 # --- Funções para Renderizar as Páginas ---
 
 def dashboard_page():
+    """Renderiza a página do Dashboard Executivo."""
     st.header("✨ Dashboard Executivo")
     st.markdown("""
     Visão de alto nível de projetos, KPIs, e o status geral da Synapse Forge,
     tudo atualizado em tempo real pelo MOAI.
     """)
 
+    # Obtém o resumo do dashboard do backend do MOAI
     summary = backend.get_dashboard_summary()
 
     col1, col2, col3 = st.columns(3)
@@ -87,23 +95,27 @@ def dashboard_page():
         st.metric("Projetos Concluídos", summary.get('completed_projects', 0))
     with col5:
         st.subheader("Atividade dos Agentes de IA:")
-        agents_data = summary.get('agents_in_activity', [])
+        # Chama a função no backend que já lida com a verificação de disponibilidade do LLM
+        agents_data = backend.get_agents_in_activity() 
         for agent in agents_data:
             st.markdown(f"- **{agent['name']}**: {agent['status']} - *{agent['last_task']}*")
 
     st.markdown("---")
     st.subheader("Infraestrutura Global (Simulada):")
-    infra_health = backend.get_infrastructure_health()
+    infra_health = backend.get_infrastructure_health() # Obtém dados de saúde da infraestrutura do backend
     st.markdown(f"**Status Geral:** {infra_health['overall_status']}")
     for component, details in infra_health['components'].items():
         st.markdown(f"- **{component}**: {details['status']} - {details['message']}")
 
     st.markdown("---")
     st.subheader("Logs Recentes do MOAI:")
-    all_logs = backend.db_manager.get_all_moai_logs() # Acessa diretamente o db_manager
+    # Acessa diretamente o db_manager do backend para logs
+    all_logs = backend.db_manager.get_all_moai_logs() 
     if all_logs:
+        # Ordena os logs do mais recente para o mais antigo e pega os 5 primeiros
         latest_logs = sorted(all_logs, key=lambda x: x.timestamp, reverse=True)[:5]
         for log in latest_logs:
+            # Seleciona o emoji com base no status do log
             status_emoji = "✅" if log.status == "SUCCESS" else ("⚠️" if log.status == "WARNING" else ("❌" if log.status == "ERROR" or log.status == "CRITICAL" else "ℹ️"))
             project_info = f" (Projeto: {log.project_id[:8]}...)" if log.project_id else ""
             agent_info = f" (Agente: {log.agent_id})" if log.agent_id else ""
@@ -113,6 +125,7 @@ def dashboard_page():
 
 
 def requirements_entry_page():
+    """Renderiza a página de Entrada de Requisitos."""
     st.header("📝 Entrada de Requisitos")
     st.markdown("""
     Insira as necessidades do cliente para que o MOAI possa iniciar a orquestração e gerar uma proposta.
@@ -124,7 +137,7 @@ def requirements_entry_page():
         with col1:
             project_name = st.text_input("🏢 Nome do Projeto *", value="", help="Ex: Sistema de Gestão de Clientes")
         with col2:
-            client_name = st.text_input("👤 Nome do Cliente *", value="", help="Ex: Acme Corporation")
+            client_name = st.text_input("�� Nome do Cliente *", value="", help="Ex: Acme Corporation")
         with col3:
             target_audience = st.text_input("🎯 Público-alvo", value="", help="Usuários principais da solução")
         
@@ -138,7 +151,7 @@ def requirements_entry_page():
         with col5:
             expected_features = st.text_area("✨ Funcionalidades Esperadas", value="", height=100, help="Lista de funcionalidades principais")
         
-        st.markdown("### 📊 Escopo e Restrições")
+        st.markdown("### �� Escopo e Restrições")
         restrictions = st.text_area("⚠️ Restrições e Requisitos (Orçamento, Prazo, Segurança, etc.)", value="", height=100, help="Limites técnicos, financeiros e temporais")
 
         submitted = st.form_submit_button("🚀 Gerar Proposta via MOAI", use_container_width=True)
@@ -159,12 +172,14 @@ def requirements_entry_page():
                 }
                 try:
                     with st.spinner("⏳ MOAI e Agentes trabalhando na sua proposta..."):
-                        # MOAI agora espera um dicionário do ANP e o converte internamente
+                        # O MOAI agora espera um dicionário do ANP e o converte internamente para a Proposal.
+                        # backend.anp_agent.generate_proposal_content deve retornar Dict[str, Any]
                         proposal_content_dict = backend.anp_agent.generate_proposal_content(req_data)
                         new_proposal = backend.create_proposal(req_data, initial_content=proposal_content_dict)
                     st.success(f"✅ Proposta '{new_proposal.title}' gerada com sucesso! ID: {new_proposal.id[:8]}... Enviada para Central de Aprovações.")
                     navigate_to("aprovacoes")
                 except (LLMConnectionError, LLMGenerationError) as e:
+                    # Captura erros específicos do LLM e fornece feedback útil
                     st.error(f"❌ Erro ao gerar proposta: {e}. Verifique a conexão com o LLM (Ollama) e se o modelo está baixado.")
                 except Exception as e:
                     st.error(f"❌ Ocorreu um erro inesperado ao gerar a proposta: {e}")
@@ -172,18 +187,20 @@ def requirements_entry_page():
 
 
 def approvals_center_page():
+    """Renderiza a página da Central de Aprovações."""
     st.header("✅ Central de Aprovações")
     st.markdown("""
     Revise e aprove as propostas geradas pelo MOAI. Sua aprovação transforma a proposta em um projeto ativo.
     """)
 
-    all_proposals = backend.get_all_proposals()
+    all_proposals = backend.get_all_proposals() # Obtém todas as propostas
     
+    # Filtra as propostas por status
     pending_proposals = [p for p in all_proposals if p.status == "pending"]
     approved_proposals = [p for p in all_proposals if p.status == "approved"]
     rejected_proposals = [p for p in all_proposals if p.status == "rejected"]
 
-    # Abas para organizar as propostas
+    # Abas para organizar as propostas visualmente
     tab1, tab2, tab3 = st.tabs([
         f"⏳ Pendentes ({len(pending_proposals)})", 
         f"✅ Aprovadas ({len(approved_proposals)})", 
@@ -207,10 +224,10 @@ def approvals_center_page():
                         st.write(proposal.scope_moai)
                     
                     with col_info[1]:
-                        st.markdown("#### 🛠️ Tecnologias")
+                        st.markdown("#### ��️ Tecnologias")
                         st.write(proposal.technologies_suggested_moai)
                         
-                        st.markdown("#### 💰 Estimativas")
+                        st.markdown("#### �� Estimativas")
                         # Exibir Valor e Prazo com fonte/tamanho consistentes aos campos do formulário
                         st.markdown(f"**Valor:** <span style='font-size:16px'>{format_currency(proposal.estimated_value_moai)}</span>", unsafe_allow_html=True)
                         st.markdown(f"**Prazo:** <span style='font-size:16px'>{proposal.estimated_time_moai}</span>", unsafe_allow_html=True)
@@ -222,6 +239,7 @@ def approvals_center_page():
                     
                     st.divider()
                     
+                    # Estado para controlar a visibilidade do formulário de edição
                     edit_key = f"edit_proposal_content_{proposal.id}"
                     if edit_key not in st.session_state:
                         st.session_state[edit_key] = False
@@ -229,34 +247,38 @@ def approvals_center_page():
                     col_actions = st.columns(4)
                     with col_actions[0]:
                         if st.button("✅ Aprovar", key=f"approve_{proposal.id}", use_container_width=True):
-                            with st.spinner(f"Aprovando proposta..."):
+                            with st.spinner(f"Aprovando proposta '{proposal.title}'..."):
                                 project_id = backend.update_proposal_status(proposal.id, "approved")
                                 if project_id:
-                                    st.success(f"✅ Proposta aprovada! Projeto iniciado.")
+                                    st.success(f"✅ Proposta aprovada! Projeto iniciado com ID: {project_id[:8]}...")
                                 else:
-                                    st.error(f"❌ Erro ao criar projeto.")
-                                st.rerun()
+                                    st.error(f"❌ Erro ao criar projeto a partir da proposta.")
+                                st.rerun() # Recarrega a página para atualizar as abas
                     
                     with col_actions[1]:
                         if st.button("❌ Rejeitar", key=f"reject_{proposal.id}", use_container_width=True):
-                            with st.spinner(f"Rejeitando proposta..."):
+                            with st.spinner(f"Rejeitando proposta '{proposal.title}'..."):
                                 backend.update_proposal_status(proposal.id, "rejected")
                             st.warning(f"⚠️ Proposta rejeitada.")
-                            st.rerun()
+                            st.rerun() # Recarrega a página para atualizar as abas
                     
                     with col_actions[2]:
                         if st.button("✏️ Editar", key=f"edit_{proposal.id}", use_container_width=True):
+                            # Alterna o estado de edição e força o re-run
                             st.session_state[edit_key] = not st.session_state[edit_key]
                             st.rerun()
                     
                     with col_actions[3]:
+                        # Botão "Visualizar Completo" para exibir todos os detalhes da proposta
+                        view_full_key = f"view_full_{proposal.id}"
                         if st.button("📋 Visualizar Completo", key=f"full_{proposal.id}", use_container_width=True):
-                            st.session_state[f"view_full_{proposal.id}"] = not st.session_state.get(f"view_full_{proposal.id}", False)
-                            st.rerun()
+                            st.session_state[view_full_key] = not st.session_state.get(view_full_key, False)
+                            # Não precisa de rerun aqui, o conteúdo pode ser expandido/colapsado abaixo
                     
+                    # Exibe o formulário de edição se st.session_state[edit_key] for True
                     if st.session_state[edit_key]:
                         st.markdown("---")
-                        st.subheader(f"✏️ Editar Conteúdo")
+                        st.subheader(f"✏️ Editar Conteúdo da Proposta: {proposal.title}")
                         with st.form(key=f"form_edit_proposal_{proposal.id}"):
                             st.markdown("**Informações Básicas**")
                             col_basic = st.columns(2)
@@ -298,16 +320,26 @@ def approvals_center_page():
                                         "solution_proposal_moai": edited_solution_proposal,
                                         "scope_moai": edited_scope,
                                         "technologies_suggested_moai": edited_technologies,
-                                        "estimated_value_moai": edited_estimated_value_str,
+                                        "estimated_value_moai": edited_estimated_value_str, # Será convertido para float no backend
                                         "estimated_time_moai": edited_estimated_time,
                                         "terms_conditions_moai": edited_terms_conditions
                                     }
                                     backend.update_proposal_content(proposal.id, updated_fields)
                                     st.success("✅ Proposta atualizada com sucesso!")
-                                    st.session_state[edit_key] = False
-                                    st.rerun()
+                                    st.session_state[edit_key] = False # Esconde o formulário de edição
+                                    st.rerun() # Recarrega para mostrar as alterações
                                 except Exception as e:
                                     st.error(f"❌ Erro ao salvar alterações: {e}")
+                            if cancel_edit:
+                                st.session_state[edit_key] = False
+                                st.rerun()
+                    
+                    # Exibe detalhes completos se o estado for True (após o botão "Visualizar Completo")
+                    if st.session_state.get(view_full_key, False):
+                        st.markdown("---")
+                        st.subheader("Detalhes Completos da Proposta:")
+                        st.json(proposal.dict()) # Exibe a proposta como JSON completo para inspeção
+
         else:
             st.info("🎉 Nenhuma proposta pendente. Todas as propostas foram revisadas!")
     
@@ -317,11 +349,21 @@ def approvals_center_page():
                 with st.expander(f"✅ {proposal.title} (ID: {proposal.id[:8]}...)", expanded=False):
                     st.success(f"Aprovado em: {proposal.approved_at.strftime('%d/%m/%Y %H:%M') if proposal.approved_at else 'N/A'}")
                     st.write(proposal.description)
-                    # Mostrar Valor e Prazo com mesmo estilo dos formulários
                     st.markdown(f"**Valor:** <span style='font-size:16px'>{format_currency(proposal.estimated_value_moai)}</span>", unsafe_allow_html=True)
                     st.markdown(f"**Prazo:** <span style='font-size:16px'>{proposal.estimated_time_moai}</span>", unsafe_allow_html=True)
-                    if st.button("📄 Ver Detalhes", key=f"view_approved_{proposal.id}"):
+                    
+                    # Detalhes completos da solução para propostas aprovadas
+                    if st.button("📄 Ver Solução Completa", key=f"view_approved_solution_{proposal.id}"):
+                        st.markdown("#### 🔍 Entendimento do Problema")
+                        st.write(proposal.problem_understanding_moai)
+                        st.markdown("#### 💡 Solução Proposta")
                         st.write(proposal.solution_proposal_moai)
+                        st.markdown("#### 📊 Escopo")
+                        st.write(proposal.scope_moai)
+                        st.markdown("#### 🛠️ Tecnologias")
+                        st.write(proposal.technologies_suggested_moai)
+                        st.markdown("#### �� Termos e Condições")
+                        st.write(proposal.terms_conditions_moai)
         else:
             st.info("📭 Nenhuma proposta aprovada ainda.")
     
@@ -336,18 +378,19 @@ def approvals_center_page():
 
 
 def project_timeline_page():
+    """Renderiza a página da Linha do Tempo do Projeto."""
     st.header("⏳ Linha do Tempo do Projeto")
     st.markdown("""
     Visualize o progresso dos projetos em andamento e as fases concluídas ou futuras.
     """)
 
-    all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+    all_projects = backend.get_all_projects()
     if not all_projects:
         st.info("Nenhum projeto ativo para exibir a linha do tempo.")
         return
 
     # Mapeia ID do projeto para o nome formatado para o selectbox
-    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
     selected_project_key = st.selectbox(
         "Selecione um Projeto",
         options=list(project_options_display.keys()),
@@ -359,7 +402,7 @@ def project_timeline_page():
         project = backend.get_project_by_id(selected_project_id)
 
         if project:
-            st.markdown(f"### Projeto: {project.name} - {project.client_name} (ID: {project.id[:8]}...)") # CORRIGIDO: project.id
+            st.markdown(f"### Projeto: {project.name} - {project.client_name} (ID: {project.id[:8]}...)")
             st.progress(project.progress / 100.0, text=f"Progresso Geral: {project.progress}%")
             st.write(f"**Status:** {project.status}")
             st.write(f"**Iniciado em:** {project.started_at.strftime('%Y-%m-%d')}")
@@ -367,10 +410,7 @@ def project_timeline_page():
                 st.write(f"**Concluído em:** {project.completed_at.strftime('%Y-%m-%d')}")
 
             st.subheader("Fases do Projeto:")
-            phases_data = backend.get_project_phases_status(project.id) # CORRIGIDO: project.id
-            
-            # Criar um DataFrame para exibição (opcional, mas pode ser útil para gráficos futuros)
-            phases_df = pd.DataFrame(phases_data)
+            phases_data = backend.get_project_phases_status(project.id)
             
             # Exibir como tabela ou lista
             for phase in phases_data:
@@ -378,6 +418,7 @@ def project_timeline_page():
                 st.markdown(f"- {status_emoji} **{phase['name']}**: {phase['status']}")
             
             st.subheader("Logs do Projeto:")
+            # Filtra os logs do MOAI apenas para o projeto selecionado
             project_logs = [log for log in backend.db_manager.get_all_moai_logs() if log.project_id == project.id]
             if project_logs:
                 latest_project_logs = sorted(project_logs, key=lambda x: x.timestamp, reverse=True)[:10]
@@ -395,7 +436,8 @@ def project_timeline_page():
 
 
 def detailed_reports_page():
-    st.header("📊 Relatórios Detalhados")
+    """Renderiza a página de Relatórios Detalhados."""
+    st.header("�� Relatórios Detalhados")
     st.markdown("""
     Acesse relatórios completos de desempenho, qualidade, segurança e aspectos comerciais da Synapse Forge.
     """)
@@ -425,7 +467,9 @@ def detailed_reports_page():
         # Gerar gráfico de propostas por status
         df_proposals_status = pd.DataFrame({
             'Status': ['Aprovadas', 'Rejeitadas', 'Pendentes'],
-            'Quantidade': [commercial_report['propostas_aprovadas'], commercial_report['propostas_rejeitadas'], commercial_report['propostas_geradas'] - commercial_report['propostas_aprovadas'] - commercial_report['propostas_rejeitadas']]
+            'Quantidade': [commercial_report['propostas_aprovadas'], 
+                           commercial_report['propostas_rejeitadas'], 
+                           commercial_report['propostas_geradas'] - commercial_report['propostas_aprovadas'] - commercial_report['propostas_rejeitadas']]
         })
         fig = px.pie(df_proposals_status, values='Quantidade', names='Status', title='Propostas por Status')
         st.plotly_chart(fig, use_container_width=True)
@@ -433,12 +477,12 @@ def detailed_reports_page():
 
     elif report_type == "Qualidade e Testes":
         st.subheader("Relatório de Qualidade e Testes (AQT)")
-        all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+        all_projects = backend.get_all_projects()
         if not all_projects:
             st.info("Nenhum projeto ativo para gerar relatórios de qualidade.")
             return
 
-        project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+        project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
         selected_project_key = st.selectbox(
             "Selecione um Projeto para Relatório de Qualidade",
             options=list(project_options_display.keys()),
@@ -447,6 +491,7 @@ def detailed_reports_page():
 
         if selected_project_key:
             selected_project_id = project_options_display[selected_project_key]
+            # O backend.get_quality_tests_report já lida com a geração on-demand se não encontrado
             quality_report_data = backend.get_quality_tests_report(selected_project_id)
 
             if quality_report_data and not quality_report_data.get("error"):
@@ -472,12 +517,12 @@ def detailed_reports_page():
 
     elif report_type == "Segurança e Auditoria":
         st.subheader("Relatório de Segurança e Auditoria (ASE)")
-        all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+        all_projects = backend.get_all_projects()
         if not all_projects:
             st.info("Nenhum projeto ativo para gerar relatórios de segurança.")
             return
         
-        project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+        project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
         selected_project_key = st.selectbox(
             "Selecione um Projeto para Relatório de Segurança",
             options=list(project_options_display.keys()),
@@ -486,6 +531,7 @@ def detailed_reports_page():
 
         if selected_project_key:
             selected_project_id = project_options_display[selected_project_key]
+            # O backend.get_security_audit_report já lida com a geração on-demand se não encontrado
             security_report_data = backend.get_security_audit_report(selected_project_id)
 
             if security_report_data and not security_report_data.get("error"):
@@ -509,6 +555,7 @@ def detailed_reports_page():
 
     elif report_type == "Monitoramento Geral":
         st.subheader("Relatório de Monitoramento Geral (AMS)")
+        # O backend.get_monitoring_summary já lida com a geração on-demand se não encontrado
         monitoring_summary = backend.get_monitoring_summary() # Resumo global
         if monitoring_summary and not monitoring_summary.get("error"):
             st.write(f"**Status Geral dos Sistemas:** {monitoring_summary.get('system_health', {}).get('status', 'N/A')}")
@@ -534,17 +581,18 @@ def detailed_reports_page():
 
 
 def code_viewer_page():
+    """Renderiza a página do Visualizador de Código Gerado."""
     st.header("💻 Visualizador de Código Gerado")
     st.markdown("""
     Inspecione o código-fonte gerado pelos Agentes de Desenvolvimento (ADE-X).
     """)
 
-    all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+    all_projects = backend.get_all_projects()
     if not all_projects:
         st.info("Nenhum projeto ativo com código gerado para exibir.")
         return
 
-    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
     selected_project_key = st.selectbox(
         "Selecione um Projeto",
         options=list(project_options_display.keys()),
@@ -553,9 +601,9 @@ def code_viewer_page():
 
     if selected_project_key:
         selected_project_id = project_options_display[selected_project_key]
-        project_name_display = selected_project_key.split(' - ')[1] # Extrai o nome do projeto
+        project_name_display = selected_project_key.split(' - ')[1]
 
-        st.subheader(f"Código Gerado para {project_name_display} (ID: {selected_project_id[:8]}...)") # CORRIGIDO: selected_project_id
+        st.subheader(f"Código Gerado para {project_name_display} (ID: {selected_project_id[:8]}...)")
 
         # Formulário para gerar novo código (exemplo)
         with st.expander("Gerar Novo Código (via ADE-X)"):
@@ -567,10 +615,11 @@ def code_viewer_page():
 
                 if submit_code_gen:
                     with st.spinner("ADE-X está gerando o código..."):
+                        # O backend.generate_code_for_project retorna um Dict[str, Any] com 'success' e 'message'
                         result = backend.generate_code_for_project(selected_project_id, code_filename, code_language, code_description)
                         if result["success"]:
                             st.success(result["message"])
-                            st.rerun()
+                            st.rerun() # Recarrega para mostrar o novo código na lista
                         else:
                             st.error(f"Falha ao gerar código: {result['message']}")
 
@@ -593,17 +642,18 @@ def code_viewer_page():
 
 
 def infra_backup_management_page():
+    """Renderiza a página de Gestão de Infraestrutura e Backup."""
     st.header("⚙️ Gestão de Infraestrutura e Backup")
     st.markdown("""
     Gerencie e monitore a infraestrutura dos projetos e as estratégias de backup.
     """)
 
-    all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+    all_projects = backend.get_all_projects()
     if not all_projects:
         st.info("Nenhum projeto ativo para gerenciar infraestrutura e backup.")
         return
 
-    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
     selected_project_key = st.selectbox(
         "Selecione um Projeto",
         options=list(project_options_display.keys()),
@@ -614,21 +664,25 @@ def infra_backup_management_page():
         selected_project_id = project_options_display[selected_project_key]
         project_name_display = selected_project_key.split(' - ')[1]
 
-        st.subheader(f"Ambiente do Projeto: {project_name_display} (ID: {selected_project_id[:8]}...)") # CORRIGIDO: selected_project_id
+        st.subheader(f"Ambiente do Projeto: {project_name_display} (ID: {selected_project_id[:8]}...)")
 
         st.markdown("---")
         st.subheader("Status da Infraestrutura (AID):")
+        # O backend.get_project_infra_status retorna um Dict[str, Any]
         infra_status = backend.get_project_infra_status(selected_project_id)
-        if infra_status:
+        if infra_status and not infra_status.get('error'):
             st.write(f"**Status Geral:** {infra_status.get('overall_status', 'N/A')}")
             for item, detail in infra_status.get('resources', {}).items():
                 st.markdown(f"- **{item}**: {detail['status']} - {detail['message']}")
         else:
-            st.info("Status da infraestrutura não disponível.")
+            st.info(f"Status da infraestrutura não disponível ou {infra_status.get('error', 'Erro desconhecido')}.")
 
         st.markdown("---")
         st.subheader("Gestão de Backups (AID):")
-        backup_info = backend.aid_agent.configure_backups(selected_project_id, "Projeto Backup") # Obtém informações de backup
+        # Nota: Chamando AIDAgent.configure_backups para *obter* info pode ser um design ambíguo.
+        # Idealmente, haveria um método como `AIDAgent.get_backup_status(project_id)`.
+        # No entanto, seguindo a suposição de que `configure_backups` também retorna status.
+        backup_info = backend.aid_agent.configure_backups(selected_project_id, "Projeto Backup") # Assume que retorna informações de status
         if backup_info and backup_info.get('success'):
             details = backup_info.get('details', {})
             st.write(f"**Política de Backup:** {details.get('policy_data', 'N/A')}")
@@ -638,8 +692,9 @@ def infra_backup_management_page():
 
             col_backup_buttons = st.columns(2)
             with col_backup_buttons[0]:
-                if st.button("Manual Backup", key=f"manual_backup_{selected_project_id}", use_container_width=True):
+                if st.button("Executar Backup Manual", key=f"manual_backup_{selected_project_id}", use_container_width=True):
                     with st.spinner("Executando backup manual..."):
+                        # O backend.trigger_manual_backup retorna um Dict[str, Any] com 'success' e 'message'
                         result = backend.trigger_manual_backup(selected_project_id)
                         if result["success"]:
                             st.success(result["message"])
@@ -647,8 +702,9 @@ def infra_backup_management_page():
                             st.error(f"Erro no backup manual: {result['message']}")
                     st.rerun()
             with col_backup_buttons[1]:
-                if st.button("Schedule Test Restore", key=f"schedule_test_restore_{selected_project_id}", use_container_width=True):
+                if st.button("Agendar Teste de Restauração", key=f"schedule_test_restore_{selected_project_id}", use_container_width=True):
                     with st.spinner("Agendando teste de restauração..."):
+                        # O backend.schedule_test_restore retorna um Dict[str, Any] com 'success' e 'message'
                         result = backend.schedule_test_restore(selected_project_id)
                         if result["success"]:
                             st.success(result["message"])
@@ -662,17 +718,18 @@ def infra_backup_management_page():
 
 
 def documentation_page():
+    """Renderiza a página do Módulo de Documentação."""
     st.header("📚 Módulo de Documentação")
     st.markdown("""
     Acesse e gere a documentação completa dos projetos, mantendo tudo atualizado pelo ADO.
     """)
 
-    all_projects = backend.get_all_projects() # CORRIGIDO: get_all_projects()
+    all_projects = backend.get_all_projects()
     if not all_projects:
         st.info("Nenhum projeto ativo com documentação para exibir.")
         return
 
-    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects} # CORRIGIDO: p.id
+    project_options_display = {f"{p.id[:8]}... - {p.name}": p.id for p in all_projects}
     selected_project_key = st.selectbox(
         "Selecione um Projeto",
         options=list(project_options_display.keys()),
@@ -683,16 +740,17 @@ def documentation_page():
         selected_project_id = project_options_display[selected_project_key]
         project_name_display = selected_project_key.split(' - ')[1]
 
-        st.subheader(f"Documentação para {project_name_display} (ID: {selected_project_id[:8]}...)") # CORRIGIDO: selected_project_id
+        st.subheader(f"Documentação para {project_name_display} (ID: {selected_project_id[:8]}...)")
 
-        if st.button(f"Gerar/Atualizar Documentação (ADO) para {project_name_display}", key=f"generate_doc_{selected_project_id}", use_container_width=True): # CORRIGIDO: selected_project_id
+        if st.button(f"Gerar/Atualizar Documentação (ADO) para {project_name_display}", key=f"generate_doc_{selected_project_id}", use_container_width=True):
             with st.spinner("ADO está gerando/atualizando a documentação..."):
+                # O backend.generate_project_documentation retorna um Dict[str, Any] com 'success' e 'message'
                 result = backend.generate_project_documentation(selected_project_id)
                 if result["success"]:
                     st.success(result["message"])
                 else:
                     st.error(f"Falha ao gerar documentação: {result['message']}")
-            st.rerun()
+            st.rerun() # Recarrega para mostrar a nova documentação na lista
 
         documentation_list = backend.get_documentation_for_project(selected_project_id)
         if documentation_list:
@@ -703,7 +761,10 @@ def documentation_page():
                 selected_doc = doc_files_map[selected_doc_file_name]
                 st.markdown(f"**Tipo:** {selected_doc.document_type}")
                 st.markdown(f"**Versão:** {selected_doc.version}")
-                st.markdown(f"**Última Atualização:** {selected_doc.last_updated.strftime('%Y-%m-%d %H:%M:%S')}")
+                if selected_doc and selected_doc.last_updated:
+                    st.markdown(f"**Última Atualização:** {selected_doc.last_updated.strftime('%Y-%m-%d %H:%M:%S')}")
+                else:
+                    st.markdown("**Última Atualização:** N/A")
                 st.markdown("---")
                 st.markdown(selected_doc.content) # Renderiza o markdown
         else:
@@ -713,13 +774,14 @@ def documentation_page():
 
 
 def moai_communication_page():
+    """Renderiza a página de Comunicação com MOAI."""
     st.header("💬 Comunicação com MOAI")
     st.markdown("""
     Converse diretamente com o MOAI para obter insights, status ou emitir comandos.
     """)
 
     st.subheader("Histórico de Conversa:")
-    chat_history = backend.get_chat_history() # CORRIGIDO: usa o método do MOAI que já chama db_manager
+    chat_history = backend.get_chat_history() # Usa o método do MOAI que já chama db_manager para obter histórico
     for chat_message in chat_history:
         with st.chat_message(chat_message.sender):
             st.markdown(chat_message.message)
@@ -727,22 +789,23 @@ def moai_communication_page():
     user_input = st.chat_input("Fale com o MOAI...")
 
     if user_input:
-        backend.add_chat_message("user", user_input)
+        backend.add_chat_message("user", user_input) # Adiciona a mensagem do usuário ao histórico
         with st.chat_message("user"):
             st.markdown(user_input)
         
         with st.spinner("MOAI está pensando..."):
+            # backend.process_moai_chat agora retorna uma string diretamente
             moai_response = backend.process_moai_chat(user_input)
         
-        backend.add_chat_message("assistant", moai_response)
+        backend.add_chat_message("assistant", moai_response) # Adiciona a resposta do MOAI ao histórico
         with st.chat_message("assistant"):
             st.markdown(moai_response)
         
-        # st.session_state.last_chat_message_time = datetime.datetime.now() # Não precisa de rerun imediato se a resposta já foi exibida
-        st.rerun() # Force rerun to clear input box and update history fully
+        st.rerun() # Força o re-render para limpar o input box e atualizar o histórico completamente.
 
 
 def project_management_page():
+    """Renderiza a página de Gestão de Projetos."""
     st.header("🚧 Gestão de Projetos")
     st.markdown("""
     Gerencie os detalhes dos projetos, acompanhe o progresso e faça ajustes em tempo real.
@@ -765,10 +828,10 @@ def project_management_page():
         project = backend.get_project_by_id(selected_project_id)
 
         if project:
-            # Header com informações principais
+            # Header com informações principais do projeto
             col_header1, col_header2, col_header3, col_header4 = st.columns(4)
             with col_header1:
-                st.metric("📊 Progresso", f"{project.progress}%")
+                st.metric("�� Progresso", f"{project.progress}%")
             with col_header2:
                 status_emoji = {"active": "🟢", "on hold": "🟡", "completed": "✅", "cancelled": "⛔"}.get(project.status, "❓")
                 st.metric("Status", f"{status_emoji} {project.status.title()}")
@@ -779,7 +842,7 @@ def project_management_page():
 
             st.divider()
 
-            # Abas para diferentes seções
+            # Abas para diferentes seções de gestão
             tab_details, tab_proposal, tab_edit = st.tabs(["📋 Detalhes", "📄 Proposta Original", "✏️ Editar"])
             
             with tab_details:
@@ -821,12 +884,12 @@ def project_management_page():
                     st.markdown("### 🔍 Entendimento do Problema")
                     st.write(proposal.problem_understanding_moai)
                     
-                    st.markdown("### 💡 Solução Proposta")
+                    st.markdown("### �� Solução Proposta")
                     st.write(proposal.solution_proposal_moai)
                     
                     col_tech1, col_tech2 = st.columns(2)
                     with col_tech1:
-                        st.markdown("### 📊 Escopo")
+                        st.markdown("### �� Escopo")
                         st.write(proposal.scope_moai)
                     with col_tech2:
                         st.markdown("### 🛠️ Tecnologias")
@@ -840,7 +903,7 @@ def project_management_page():
             with tab_edit:
                 st.subheader(f"✏️ Editar Projeto: {project.name}")
                 
-                st.markdown("### 📝 Dados Básicos do Projeto")
+                st.markdown("### �� Dados Básicos do Projeto")
                 with st.form(key=f"form_edit_project_{project.id}"):
                     col_edit1, col_edit2 = st.columns(2)
                     with col_edit1:
@@ -856,7 +919,7 @@ def project_management_page():
                     st.markdown("### 🔧 Editar Especificações da Proposta")
                     
                     proposal = backend.get_proposal_by_id(project.proposal_id)
-                    if proposal:
+                    if proposal: # Garante que a proposta existe antes de tentar editar
                         col_edit_title = st.columns(1)
                         edited_proposal_title = st.text_input("Título da Proposta", value=proposal.title)
                         
@@ -871,11 +934,13 @@ def project_management_page():
                         
                         col_edit_est = st.columns(2)
                         with col_edit_est[0]:
-                            edited_estimated_value_str = st.text_input("💰 Valor Estimado (R$)", value=format_currency(proposal.estimated_value_moai))
+                            edited_estimated_value_str = st.text_input("💰 Valor Estimado ($)", value=format_currency(proposal.estimated_value_moai))
                         with col_edit_est[1]:
                             edited_estimated_time = st.text_input("⏱️ Prazo Estimado", value=proposal.estimated_time_moai)
                         
                         edited_terms_conditions = st.text_area("📋 Termos e Condições", value=proposal.terms_conditions_moai, height=80)
+                    else:
+                        st.warning("⚠️ Não é possível editar a proposta: Proposta original não encontrada.")
                     
                     col_buttons = st.columns(2)
                     with col_buttons[0]:
@@ -892,6 +957,7 @@ def project_management_page():
                                 "status": edited_status,
                                 "progress": edited_progress
                             }
+                            # Lógica para atualizar completed_at se o status for alterado
                             if edited_status == "completed" and not project.completed_at:
                                 updated_project_fields["completed_at"] = datetime.datetime.now()
                             elif edited_status != "completed" and project.completed_at:
@@ -899,7 +965,7 @@ def project_management_page():
 
                             backend.update_project_details(project.id, updated_project_fields)
                             
-                            # Atualizar proposta se houver
+                            # Atualizar proposta se houver e foi encontrada
                             if proposal:
                                 updated_proposal_fields = {
                                     "title": edited_proposal_title,
@@ -907,14 +973,14 @@ def project_management_page():
                                     "solution_proposal_moai": edited_solution_proposal,
                                     "scope_moai": edited_scope,
                                     "technologies_suggested_moai": edited_technologies,
-                                    "estimated_value_moai": edited_estimated_value_str,
+                                    "estimated_value_moai": edited_estimated_value_str, # Será convertido para float no backend
                                     "estimated_time_moai": edited_estimated_time,
                                     "terms_conditions_moai": edited_terms_conditions
                                 }
                                 backend.update_proposal_content(proposal.id, updated_proposal_fields)
                             
                             st.success("✅ Projeto e proposta atualizados com sucesso!")
-                            st.rerun()
+                            st.rerun() # Recarrega a página para refletir as alterações
                         except Exception as e:
                             st.error(f"❌ Erro ao salvar alterações: {e}")
             
@@ -926,6 +992,7 @@ def project_management_page():
 
 
 def about_page():
+    """Renderiza a página 'Sobre'."""
     st.header("ℹ️ Sobre o CognitoLink e a Synapse Forge")
     st.markdown("""
     O CognitoLink é a sua central de inteligência e controle na Synapse Forge,
@@ -942,19 +1009,20 @@ def about_page():
 
 # --- Sidebar de Navegação ---
 with st.sidebar:
-    # st.image("logo_sforge.jpg", use_column_width=True) # Certifique-se de que 'logo_sforge.jpg' está na pasta
+    # st.image("logo_sforge.jpg", use_column_width=True) # Exemplo de imagem, se disponível
     st.title("✨ CognitoLink")
     st.markdown("--- ✨ Visionary Command Center ✨ ---")
 
     st.subheader("Navegação Principal")
     
+    # Botões de navegação, usando navigate_to para mudar a página
     if st.button("🌟 Dashboard Executivo", key="btn_dashboard", use_container_width=True):
         navigate_to("dashboard")
     
-    if st.button("📝 Entrada de Requisitos", key="btn_requisitos", use_container_width=True):
+    if st.button("�� Entrada de Requisitos", key="btn_requisitos", use_container_width=True):
         navigate_to("requisitos")
     
-    pending_proposals_count = backend.get_pending_proposals()
+    pending_proposals_count = backend.get_pending_proposals() # Exibe a contagem de propostas pendentes
     if st.button(f"✅ Central de Aprovações ({pending_proposals_count})", key="btn_aprovacoes", use_container_width=True):
         navigate_to("aprovacoes")
     
@@ -985,6 +1053,7 @@ with st.sidebar:
         navigate_to("sobre")
 
 # --- Roteamento de Páginas (Conteúdo Principal) ---
+# O conteúdo principal é renderizado com base na página atualmente selecionada no session_state.
 if st.session_state.current_page == "dashboard":
     dashboard_page()
 elif st.session_state.current_page == "requisitos":

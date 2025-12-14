@@ -1,241 +1,184 @@
+# llm_simulator.py
 import ollama
-import json
 import logging
-from typing import List, Dict, Any, Optional
-import pydantic # Necessário para usar .schema_json()
+import json
+from typing import List, Dict, Any, Optional, Union
+from pydantic import BaseModel, ValidationError
 
-# Configuração básica de logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+# Configure logging for this module
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# Exceções personalizadas para tratamento mais granular
+# Define custom exceptions
 class LLMConnectionError(Exception):
-    """Erro de conexão ou indisponibilidade do LLM."""
+    """Custom exception for LLM connection issues."""
     pass
 
 class LLMGenerationError(Exception):
-    """Erro na geração de resposta pelo LLM (e.g., formato inválido, conteúdo vazio)."""
+    """Custom exception for LLM generation errors (e.g., malformed response)."""
     pass
 
 class LLMSimulator:
     """
-    Simulador/Adaptador para interagir com o Ollama, suportando múltiplos modelos
-    e a geração de texto validado por Pydantic.
-    
-    Modelos disponíveis e seus usos recomendados:
-    - 'mistral': Modelo padrão versátil (AGP, ADO, ANP, AMS, AID, AAD)
-    - 'llama3': Análise profunda e raciocínio (ARA, AQT, ASE)
-    - 'codellama': Especializado em código (ADEX)
+    Simula e gerencia a conexão com um servidor Ollama para interações com LLMs.
+    Encapsula a lógica de conexão, verificação de disponibilidade e chamada dos modelos.
     """
-    # Mapeamento de modelos para configurações otimizadas
-    MODEL_CONFIGS = {
-        'mistral': {
-            'temperature': 0.5,
-            'top_p': 0.85,
-            'top_k': 50,
-            'num_predict': 4096,
-            'num_ctx': 8192,
-            'repeat_penalty': 1.1,
-        },
-        'llama3': {
-            'temperature': 0.3,  # Mais conservador para análise
-            'top_p': 0.9,
-            'top_k': 50,
-            'num_predict': 4096,
-            'num_ctx': 8192,
-            'repeat_penalty': 1.0,
-        },
-        'codellama': {
-            'temperature': 0.1,  # Muito conservador para código
-            'top_p': 0.95,
-            'top_k': 50,
-            'num_predict': 8192,  # Mais tokens para código longo
-            'num_ctx': 16384,     # Contexto maior para código
-            'repeat_penalty': 1.0,
-        }
-    }
-
-    def __init__(self, model: str = "mistral", base_url: str = "http://localhost:11434"):
-        self.model = model.lower()  # Ensure model is in lowercase for consistency
-        self.base_url = base_url
-        self._llm_available = False
-        self._available_models = {}  # Cache de modelos disponíveis
+    def __init__(self, host: str = 'http://localhost:11434'):
+        self.host = host
+        self.client: Optional[ollama.Client] = None
+        self._is_available = False # Internal flag for connection status
         
+        # Initialize client immediately upon instantiation
+        self._initialize_client()
+
+    def _initialize_client(self):
+        """Tenta inicializar o cliente Ollama e verificar a conexão."""
         try:
-            # Tenta uma conexão básica para verificar disponibilidade e o modelo
-            logging.info(f"LLMSimulator: Tentando conectar ao Ollama em {base_url} com o modelo {self.model}...")
-            # Usa um prompt simples para verificar a conexão (sem base_url, usa variável de ambiente)
-            import os
-            os.environ['OLLAMA_HOST'] = base_url
-            ollama.chat(model=self.model, messages=[{'role': 'user', 'content': 'Hello'}], options={'num_predict': 1}, stream=False)
-            logging.info(f"LLMSimulator: Ollama disponível e conectado ao {base_url} com o modelo {self.model}.")
-            self._llm_available = True
-        except ollama.ResponseError as e:
-            logging.error(f"LLMSimulator: Erro de conexão com Ollama em {base_url} para o modelo {self.model}. Por favor, verifique se o Ollama está em execução e o modelo '{self.model}' está baixado (use 'ollama pull {self.model}'). Erro: {e}")
-            self._llm_available = False
-            # Não lança exceção aqui para permitir a inicialização, mas registra que o LLM não está disponível
+            # Create a temporary client to test the connection before assigning it
+            temp_client = ollama.Client(host=self.host)
+            # Attempt a light operation (e.g., list models) to verify connection.
+            # If this fails (e.g., Ollama server not running), an exception will be caught.
+            temp_client.list() 
+            self.client = temp_client # Only assign if the test passes
+            self._is_available = True
+            logger.info(f"LLMSimulator: Conectado com sucesso ao Ollama em {self.host}")
         except Exception as e:
-            logging.error(f"LLMSimulator: Erro inesperado ao inicializar Ollama. Erro: {e}")
-            self._llm_available = False
+            # If any part of the initialization/connection test fails, ensure client is None
+            # and status is unavailable.
+            self.client = None 
+            self._is_available = False
+            logger.error(f"LLMSimulator: Falha ao conectar ao Ollama em {self.host}. Erro: {e}")
 
-    def set_model(self, model: str) -> None:
+    def is_available(self) -> bool:
         """
-        Muda o modelo LLM em tempo de execução.
-        
-        :param model: Nome do modelo ('mistral', 'llama3', 'codellama')
-        :raises LLMConnectionError: Se o modelo não estiver disponível no Ollama
+        Verifica se o cliente LLM está atualmente disponível e funcional.
+        Realiza uma verificação dinâmica para confirmar a conexão ativa.
         """
-        model_lower = model.lower()
-        if model_lower == self.model:
-            logging.info(f"LLMSimulator: Modelo já é {model_lower}.")
-            return
+        if self.client is None:
+            # If the client was never successfully initialized or explicitly set to None,
+            # it's not available.
+            self._is_available = False # Ensure internal state is consistent
+            return False
         
         try:
-            # Verifica se o modelo está disponível
-            ollama.chat(model=model_lower, messages=[{'role': 'user', 'content': 'test'}], options={'num_predict': 1}, stream=False)
-            self.model = model_lower
-            logging.info(f"LLMSimulator: Modelo mudado para {model_lower}.")
-        except ollama.ResponseError as e:
-            error_msg = f"Modelo '{model}' não disponível no Ollama. Verifique com 'ollama list' ou execute 'ollama pull {model}'. Erro: {e}"
-            logging.error(f"LLMSimulator: {error_msg}")
-            raise LLMConnectionError(error_msg)
+            # Attempt a lightweight operation to confirm the connection is active.
+            # This handles cases where the Ollama server might have gone down after
+            # initial successful connection.
+            self.client.list() 
+            self._is_available = True # Confirm the internal state is consistent
+            return True
+        except Exception as e:
+            # If the dynamic check fails, log it and update the status.
+            logger.warning(f"LLMSimulator: Cliente Ollama ficou indisponível ou conexão falhou durante verificação dinâmica: {e}")
+            self.client = None # Explicitly set client to None as it's no longer functional
+            self._is_available = False
+            return False
 
-    def chat(self, messages: List[Dict[str, str]], response_model=None, format_output: str = '', model_override: str = None) -> Any:
+    def chat(self, messages: List[Dict[str, str]], model: str = "mistral", response_model: Optional[type[BaseModel]] = None, json_mode: bool = False) -> Union[Dict[str, Any], BaseModel]:
         """
-        Envia uma requisição de chat ao Ollama.
-        :param messages: Lista de mensagens no formato [{'role': 'user', 'content': '...'}]
-        :param response_model: Modelo Pydantic para validar e parsear a resposta (se for JSON).
-        :param format_output: 'json' para forçar a saída JSON, ou '' para texto padrão.
-                              Se response_model for fornecido, format_output será sobrescrito para 'json'.
-        :param model_override: Se fornecido, usa este modelo em vez do padrão (e.g., 'codellama' para ADEX)
-        :return: Conteúdo da resposta (string ou objeto Pydantic).
-        :raises LLMConnectionError: Se houver problemas de conexão com o Ollama.
-        :raises LLMGenerationError: Se a resposta do LLM for inválida ou não puder ser parseada.
+        Simula uma interação de chat com o LLM.
+        Se response_model é fornecido, tenta analisar a resposta para esse modelo Pydantic.
+        Se json_mode é True, solicita saída JSON ao LLM.
         """
-        if not self._llm_available:
-            raise LLMConnectionError("Ollama não está disponível. Verifique os logs de inicialização para mais detalhes.")
+        # First, check availability. This will raise LLMConnectionError if not available.
+        if not self.is_available(): 
+            raise LLMConnectionError("LLM não está disponível. O servidor Ollama pode estar inativo ou mal configurado.")
 
-        # Determina qual modelo usar
-        current_model = model_override.lower() if model_override else self.model
+        # CRÍTICO: Segunda verificação explícita. Após is_available() retornar True, self.client DEVE ser um objeto.
+        # Se por algum motivo extremamente raro e inesperado self.client for None aqui, isto irá capturar.
+        if self.client is None:
+            logger.critical("LLMSimulator: Inconsistência crítica detectada - self.client é None imediatamente antes da chamada chat(), mesmo após is_available() retornar True. Isso não deveria acontecer.")
+            raise LLMConnectionError("Erro interno grave: O cliente Ollama não está disponível apesar das verificações de estado.")
         
-        # Se há override, valida que o modelo está disponível
-        if model_override and model_override.lower() != self.model:
-            try:
-                ollama.chat(model=current_model, messages=[{'role': 'user', 'content': 'test'}], options={'num_predict': 1}, stream=False)
-            except Exception as e:
-                logging.warning(f"LLMSimulator: Model override '{model_override}' não disponível, usando '{self.model}'. Erro: {e}")
-                current_model = self.model
-
-        # Criamos uma cópia das mensagens para evitar modificações indesejadas no objeto original
-        messages_to_send = [msg.copy() for msg in messages]
+        # If response_model is provided, json_mode should implicitly be True for best results.
+        if response_model and not json_mode:
+            logger.warning("LLMSimulator: 'response_model' foi fornecido, mas 'json_mode' não era True. Para melhores resultados com modelos Pydantic, defina json_mode=True.")
+            json_mode = True # Força o modo JSON se um response_model é esperado
 
         try:
-            current_format = format_output # Usa o formato passado, se houver
-            if response_model:
-                current_format = 'json' 
-                # Adiciona instrução ao prompt para garantir que o LLM retorne JSON
-                if messages_to_send and messages_to_send[-1]['role'] == 'user':
-                    messages_to_send[-1]['content'] += f"\n\nRetorne a resposta EXCLUSIVAMENTE em formato JSON, aderindo estritamente ao seguinte esquema Pydantic: {response_model.schema_json(indent=2)}"
-                else:
-                    messages_to_send.append({'role': 'system', 'content': f"Você deve retornar sua resposta EXCLUSIVAMENTE em formato JSON, aderindo estritamente ao seguinte esquema Pydantic: {response_model.schema_json(indent=2)}"})
-
-            # Obter configurações otimizadas para o modelo
-            options = self.MODEL_CONFIGS.get(current_model, self.MODEL_CONFIGS['mistral']).copy()
+            # Create a mutable copy of messages to append instructions if needed.
+            ollama_messages = list(messages) 
             
-            # Adicionar configurações adicionais (comuns a todos os modelos)
-            options.update({
-                'num_thread': 8,           # Threads CPU (Ryzen 7800X3D tem 8 cores físicos)
-                'seed': -1,                # Seed aleatório
-                'num_batch': 256,          # Batch size para throughput
-            })
+            if response_model:
+                # Get the Pydantic model's JSON schema
+                full_schema_dict = response_model.model_json_schema()
+                
+                # We want the LLM to output an object that *conforms* to the structure described in 'properties'
+                # and respects 'required' fields, but NOT to output the 'properties' key itself.
+                llm_schema_instruction = {
+                    "type": "object",
+                    "properties": full_schema_dict.get('properties', {}),
+                }
+                if 'required' in full_schema_dict:
+                    llm_schema_instruction['required'] = full_schema_dict['required']
 
-            # Otimizações específicas para Mixtral (se aplicável)
-            if 'mixtral' in current_model:
-                options['num_gqa'] = 4    # Grouped Query Attention (economiza VRAM)
+                schema_str_for_llm = json.dumps(llm_schema_instruction, indent=2)
+                
+                # Clarified instruction: generate the object, not its schema wrapper.
+                instruction = (
+                    f"\n\nSua resposta DEVE ser um objeto JSON estritamente conforme o seguinte ESQUEMA. "
+                    f"Não o encapsule em uma chave 'properties' ou 'type' de nível superior na sua resposta. "
+                    f"APENAS gere o objeto JSON em si, sem texto explicativo antes ou depois:\n"
+                    f"```json\n{schema_str_for_llm}\n```"
+                )
+                
+                # Append instruction to the last user message, or add a new one
+                if ollama_messages and ollama_messages[-1]['role'] == 'user':
+                    ollama_messages[-1]['content'] += instruction
+                else:
+                    ollama_messages.append({'role': 'user', 'content': instruction})
 
-            response = ollama.chat(
-                model=current_model,
-                messages=messages_to_send,
-                stream=False,
-                options=options,
-                format=current_format,
+                logger.debug(f"LLMSimulator: Enviando mensagens com instrução de esquema Pydantic para o modelo {model}")
+
+            # Call the Ollama chat API.
+            response = self.client.chat(
+                model=model,
+                messages=ollama_messages,
+                options={'temperature': 0.7}, # Example option, can be customized or passed dynamically
+                format='json' if json_mode else '' # Ollama's 'format' parameter for JSON output
             )
             
-            content = response['message']['content']
-            if not content:
-                raise LLMGenerationError("Resposta vazia ou nula do Ollama.")
+            # Extract the raw content from the LLM's response.
+            raw_content = response['message']['content']
             
             if response_model:
                 try:
-                    # Tenta parsear a resposta como JSON e validá-la com o modelo Pydantic
-                    json_start = content.find('{')
-                    json_end = content.rfind('}')
-                    if json_start != -1 and json_end != -1 and json_end > json_start:
-                        json_str = content[json_start : json_end + 1]
-                        # Tentativa padrão: validação completa
-                        parsed_content = response_model.parse_raw(json_str)
-                        return parsed_content
-                    else:
-                        raise json.JSONDecodeError("Conteúdo não contém um JSON válido.", content, 0)
-                except (json.JSONDecodeError, pydantic.ValidationError) as e:
-                    # Em vez de falhar ruidosamente, construímos um fallback seguro
-                    logging.warning("LLMGenerationWarning: resposta do Ollama não corresponde estritamente ao modelo Pydantic; criando objeto de fallback.")
-                    logging.debug(f"Validação/JSON erro: {e}")
-                    # Tentar extrair o JSON parcial, se houver
-                    parsed_dict = None
+                    # First, try to validate directly against the response_model
+                    parsed_response = response_model.model_validate_json(raw_content)
+                    return parsed_response
+                except ValidationError as ve:
+                    # If direct validation fails, check if the LLM wrapped it in 'properties'
                     try:
-                        parsed_dict = json.loads(json_str)
-                    except Exception:
-                        try:
-                            parsed_dict = json.loads(content)
-                        except Exception:
-                            parsed_dict = None
+                        # Attempt to load the raw content as a dictionary
+                        temp_dict = json.loads(raw_content)
+                        # Check if it's a dict and contains a 'properties' key whose value is also a dict
+                        if isinstance(temp_dict, dict) and 'properties' in temp_dict and isinstance(temp_dict['properties'], dict):
+                            logger.warning(f"LLM for {response_model.__name__} generated JSON wrapped in 'properties'. Attempting to extract and validate inner content.")
+                            # Validate the content *inside* the 'properties' key
+                            parsed_response = response_model.model_validate(temp_dict['properties'])
+                            return parsed_response
+                        # If not wrapped in 'properties' or not a dict, re-raise the original validation error
+                        raise ve
+                    except (json.JSONDecodeError, ValidationError) as inner_e:
+                        # If parsing the wrapper fails, or inner validation fails,
+                        # log both errors and re-raise the original validation error.
+                        logger.error(f"LLMGenerationError: Falha ao lidar com o wrapper 'properties' para {response_model.__name__}. Erro de validação original: {ve}. Erro interno de parsing/validação: {inner_e}. Conteúdo bruto: {raw_content[:500]}...")
+                        raise ve # Re-raise the original ValidationError for consistency
+                except json.JSONDecodeError as jde:
+                    logger.error(f"LLMGenerationError: Falha ao decodificar JSON da resposta do LLM para {response_model.__name__}. Erro: {jde}. Conteúdo bruto: {raw_content[:500]}...")
+                    raise LLMGenerationError(f"LLM não retornou JSON válido para {response_model.__name__}. Erro de Decodificação JSON: {jde}")
+            
+            # If no response_model is specified, return the content as a dictionary.
+            return {'content': raw_content}
 
-                    # Construir valores de fallback para todos os campos do modelo
-                    fallback_values = {}
-                    model_fields = getattr(response_model, 'model_fields', {}) or getattr(response_model, '__fields__', {})
-                    # model_fields em pydantic v2, __fields__ fallback para compatibilidade
-                    for fname in model_fields:
-                        if isinstance(parsed_dict, dict) and fname in parsed_dict:
-                            fallback_values[fname] = parsed_dict[fname]
-                        else:
-                            # Não temos valor: deixe como None (model_construct evita validação)
-                            fallback_values[fname] = None
-
-                    # Construir o objeto sem validação (model_construct - pydantic v2)
-                    try:
-                        obj = response_model.model_construct(**fallback_values)
-                    except Exception:
-                        # Último recurso: construir um objeto simples via __init__ com dados disponíveis
-                        try:
-                            obj = response_model(**{k: v for k, v in (parsed_dict or {}).items() if k in (model_fields or {})})
-                        except Exception:
-                            # Se tudo falhar, retornar um dicionário com o conteúdo bruto
-                            logging.error("LLMGenerationError: Não foi possível construir objeto de fallback do modelo Pydantic.")
-                            return {
-                                '_validation_error': str(e),
-                                '_raw_content': content
-                            }
-
-                    # Anexar metadados do erro ao objeto de fallback para diagnóstico
-                    try:
-                        setattr(obj, '_pydantic_validation_error', str(e))
-                        setattr(obj, '_raw_content', content)
-                    except Exception:
-                        pass
-
-                    return obj
-                except Exception as e:
-                    logging.error(f"LLMGenerationError: Falha inesperada ao parsear a resposta do LLM com o modelo Pydantic. Erro: {e}\nConteúdo recebido: {content}")
-                    raise LLMGenerationError(f"Falha inesperada ao parsear a resposta do LLM com o modelo Pydantic. Erro: {e}\nConteúdo recebido: {content}")
-            else:
-                return content
-        except ollama.ResponseError as e:
-            logging.error(f"LLMConnectionError: Erro de resposta do Ollama (código {e.status_code}). Verifique a conexão, se o modelo '{self.model}' está baixado (ollama pull {self.model}) ou se o prompt está correto. Erro: {e}")
-            raise LLMConnectionError(f"Erro de resposta do Ollama: {e}")
-        except LLMConnectionError: # Re-raise if already an LLMConnectionError from availability check
+        except LLMConnectionError:
+            # Re-raise explicit connection errors for upstream handling.
             raise
+        except ollama.ResponseError as re:
+            # Catch Ollama API specific errors.
+            logger.error(f"LLMGenerationError: Erro da API Ollama: {re}. Modelo: {model}")
+            raise LLMGenerationError(f"Erro da API Ollama durante a geração: {re}")
         except Exception as e:
-            # Captura outros erros inesperados durante a chamada ao Ollama
-            last_prompt_content = messages_to_send[-1]['content'] if messages_to_send else "N/A"
-            logging.error(f"LLMGenerationError: Erro inesperado ao chamar Ollama. Erro: {e}. Último prompt enviado: '{last_prompt_content}'")
-            raise LLMGenerationError(f"Erro inesperado ao chamar Ollama. Erro: {e}")
+            # Catch any other unexpected errors during the chat interaction.
+            logger.error(f"LLMGenerationError: Ocorreu um erro inesperado durante o chat do LLM: {e}", exc_info=True)
+            raise LLMGenerationError(f"Erro inesperado durante a interação com o LLM: {e}")

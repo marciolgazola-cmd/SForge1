@@ -1,11 +1,11 @@
 # MOAI.py
+import logging
 import uuid
 import datetime
 import random
-import json
+import json # Certifique-se que está importado
 import time
-from typing import Dict, Any, List, Optional
-import logging
+from typing import Dict, Any, List, Optional, Union, cast # Adicionado 'cast'
 
 # Importa os modelos do novo arquivo data_models.py
 from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog
@@ -16,21 +16,24 @@ from database_manager import DatabaseManager
 # Importações de exceções e do LLMSimulator
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 
-# Importações dos agentes
-# Assumimos que estes arquivos de agente existem e suas classes estão corretas
-from ara_agent import ARAAgent
-from aad_agent import AADAgent
-from agp_agent import AGPAgent
-from anp_agent import ANPAgent
-from adex_agent import ADEXAgent
-from aqt_agent import AQTAgent
-from ase_agent import ASEAgent
-from ado_agent import ADOAgent
-from ams_agent import AMSAgent
-from aid_agent import AIDAgent
+# Importa o mapeamento de modelos para agentes
+from agent_model_mapping import get_agent_model
+
+# Importações dos agentes e seus modelos de saída (para type hinting e conversão)
+from ara_agent import ARAAgent, ARAOutput
+from aad_agent import AADAgent, AADSolutionOutput
+from agp_agent import AGPAgent, AGPEstimateOutput
+from anp_agent import ANPAgent, ProposalContentOutput
+from adex_agent import ADEXAgent, GeneratedCodeOutput
+from aqt_agent import AQTAgent, QualityReportOutput
+from ase_agent import ASEAgent, SecurityReportOutput
+from ado_agent import ADOAgent, DocumentationOutput
+from ams_agent import AMSAgent, MonitoringSummaryOutput
+from aid_agent import AIDAgent, InfraStatusOutput
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class SynapseForgeBackend:
@@ -46,20 +49,24 @@ class SynapseForgeBackend:
             self.db_manager = DatabaseManager('synapse_forge.db')
             self.llm_simulator = LLMSimulator() # Inicializa o LLM Simulator
 
-        # Inicializa os Agentes
-        self.ara_agent = ARAAgent(self.llm_simulator)
-        self.aad_agent = AADAgent(self.llm_simulator)
-        self.agp_agent = AGPAgent(self.llm_simulator)
-        self.anp_agent = ANPAgent(self.llm_simulator, self.ara_agent, self.aad_agent, self.agp_agent)
-        self.adex_agent = ADEXAgent(self.llm_simulator)
-        self.aqt_agent = AQTAgent(self.llm_simulator)
-        self.ase_agent = ASEAgent(self.llm_simulator)
-        self.ado_agent = ADOAgent(self.llm_simulator)
-        self.ams_agent = AMSAgent(self.llm_simulator)
-        self.aid_agent = AIDAgent(self.llm_simulator)
-        self._initialized = True
-        logging.info("SynapseForgeBackend (MOAI) inicializado com sucesso e orquestrando agentes.")
-        self._initialize_data() # Inicializa com dados de exemplo se o DB estiver vazio
+            # Inicializa os Agentes
+            # Agentes base que não dependem de outros para inicialização
+            self.ara_agent = ARAAgent(self.llm_simulator)
+            self.aad_agent = AADAgent(self.llm_simulator)
+            self.agp_agent = AGPAgent(self.llm_simulator)
+            self.adex_agent = ADEXAgent(self.llm_simulator)
+            self.aqt_agent = AQTAgent(self.llm_simulator)
+            self.ase_agent = ASEAgent(self.llm_simulator)
+            self.ado_agent = ADOAgent(self.llm_simulator)
+            self.ams_agent = AMSAgent(self.llm_simulator)
+            self.aid_agent = AIDAgent(self.llm_simulator)
+
+            # ANPAgent que depende de outros agentes
+            self.anp_agent = ANPAgent(self.llm_simulator, self.ara_agent, self.aad_agent, self.agp_agent)
+            
+            self._initialized = True
+            logger.info("SynapseForgeBackend (MOAI) inicializado com sucesso e orquestrando agentes.")
+            self._initialize_data() # Inicializa com dados de exemplo se o DB estiver vazio
 
     def _add_moai_log(self, event_type: str, details: str, project_id: Optional[str] = None, agent_id: Optional[str] = None, status: str = "INFO"):
         log_id = str(uuid.uuid4())
@@ -71,33 +78,33 @@ class SynapseForgeBackend:
         self._add_moai_log(f"AGENT_STATUS_{agent_name.upper()}", f"Status: {status}. Mensagem: {message}", project_id=project_id, agent_id=agent_name, status=status)
 
     def _convert_estimated_value_to_float(self, value: Any) -> Optional[float]:
-        """Converte um valor estimado (string R\$, etc.) para float ou None."""
+        """Converte um valor estimado (string R$, etc.) para float ou None."""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, str):
             try:
-                numeric_string = value.replace('R\$', '').replace('.', '').replace(',', '.').strip()
+                numeric_string = value.replace(r'R$', '').replace('.', '').replace(',', '.').strip()
                 return float(numeric_string) if numeric_string else None
             except ValueError:
-                logging.warning(f"Não foi possível converter o valor '{value}' para float. Retornando None.")
+                logger.warning(f"Não foi possível converter o valor '{value}' para float. Retornando None.")
                 return None
         return None
 
-
     def _initialize_data(self):
-        logging.info("Inicializando dados de exemplo...")
+        logger.info("Inicializando dados de exemplo...")
         if not self.db_manager.get_all_proposals():
-            logging.info("Nenhuma proposta encontrada. Criando dados de exemplo...")
+            logger.info("Nenhuma proposta encontrada. Criando dados de exemplo...")
             sample_reqs = {
                 "nome_projeto": "Sistema de Gestão de Eventos",
                 "nome_cliente": "OrganizaEventos Ltda.",
                 "problema_negocio": "A OrganizaEventos precisa de uma plataforma para gerenciar inscrições, agenda e comunicação com participantes de múltiplos eventos simultaneamente, pois o processo atual é manual e ineficaz.",
                 "objetivos_projeto": "Automatizar o processo de inscrição, centralizar a gestão de eventos, melhorar a comunicação com os participantes e gerar relatórios de desempenho dos eventos.",
                 "funcionalidades_esperadas": "Cadastro de eventos, gestão de inscrições (com diferentes tipos de ingresso), agenda de palestras, envio de notificações, chat para participantes, área de expositores, relatórios financeiros e de presença.",
-                "restricoes": "Orçamento de até R\$ 50.000,00. Prazo de 4 meses para MVP. Deve ser escalável para 10.000 participantes por evento. Utilizar tecnologias open-source quando possível.",
+                "restricoes": r"Orçamento de até R\$ 50.000,00. Prazo de 4 meses para MVP. Deve ser escalável para 10.000 participantes por evento. Utilizar tecnologias open-source quando possível.",
                 "publico_alvo": "Organizadores de eventos (administradores), palestrantes, participantes e expositores."
             }
             try:
+                # Assumimos que ANPAgent.generate_proposal_content retorna um Dict[str, Any]
                 proposal_content_dict = self.anp_agent.generate_proposal_content(sample_reqs)
                 
                 # Garante que estimated_value_moai seja float ou None
@@ -106,9 +113,9 @@ class SynapseForgeBackend:
                 )
                 
                 self.create_proposal(sample_reqs, initial_content=proposal_content_dict)
-                logging.info("Dados de exemplo de proposta gerados com sucesso.")
+                logger.info("Dados de exemplo de proposta gerados com sucesso.")
             except Exception as e:
-                logging.error(f"ERRO: Falha ao gerar conteúdo da proposta inicial via ANP. Erro: {e}. Criando proposta com dados padrão.")
+                logger.error(f"ERRO: Falha ao gerar conteúdo da proposta inicial via ANP. Erro: {e}. Criando proposta com dados padrão.")
                 self.create_proposal(sample_reqs, initial_content={
                     "title": f"Proposta para {sample_reqs['nome_projeto']} (Rascunho de Fallback)",
                     "description": f"Proposta inicial gerada automaticamente. Necessita de revisão manual devido a um erro na geração do conteúdo pelo LLM: {e}.",
@@ -128,11 +135,12 @@ class SynapseForgeBackend:
                 "problema_negocio": "A Distributedora Integrada precisa modernizar seu canal de vendas B2B, substituindo pedidos manuais por uma plataforma online que integre com seu ERP, otimize o processo de pedidos e acompanhamento.",
                 "objetivos_projeto": "Digitalizar o processo de vendas B2B, reduzir erros, melhorar a experiência do cliente e fornecer dados de vendas em tempo real.",
                 "funcionalidades_esperadas": "Catálogo de produtos, gestão de preços personalizados por cliente, histórico de pedidos, integração com ERP (SAP), gestão de usuários, dashboard de analytics.",
-                "restricoes": "Orçamento de até R\$ 120.000,00. Prazo de 6 meses para lançamento. Alta segurança. Multi-idioma.",
+                "restricoes": r"Orçamento de até R\$ 120.000,00. Prazo de 6 meses para lançamento. Alta segurança. Multi-idioma.",
                 "publico_alvo": "Clientes B2B da Distribuidores Integrados (empresas, revendedores)."
             }
             try:
                 # Geração do conteúdo da proposta inicial
+                # Assumimos que ANPAgent.generate_proposal_content retorna um Dict[str, Any]
                 proposal_content_approved_dict = self.anp_agent.generate_proposal_content(sample_reqs_approved)
                 proposal_content_approved_dict['estimated_value_moai'] = self._convert_estimated_value_to_float(
                     proposal_content_approved_dict.get('estimated_value_moai')
@@ -142,6 +150,7 @@ class SynapseForgeBackend:
                 approved_proposal_obj = self.create_proposal(sample_reqs_approved, status="pending", initial_content=proposal_content_approved_dict)
                 
                 # Gerar a versão final (aprovada) da proposta, que pode ter mais detalhes ou formatação final
+                # Assumimos que ANPAgent.generate_approved_proposal_content retorna um Dict[str, Any]
                 final_proposal_details_dict = self.anp_agent.generate_approved_proposal_content(approved_proposal_obj.dict())
                 final_proposal_details_dict['estimated_value_moai'] = self._convert_estimated_value_to_float(
                     final_proposal_details_dict.get('estimated_value_moai')
@@ -173,9 +182,10 @@ class SynapseForgeBackend:
                 self.db_manager.add_project(project.dict())
                 self._add_moai_log("PROJECT_CREATED", f"Projeto '{project.name}' criado a partir da proposta {approved_proposal_obj_final.id[:8]}...", project_id=project.id)
 
-                logging.info(f"Iniciando orquestração de agentes para o projeto {project.name}...")
+                logger.info(f"Iniciando orquestração de agentes para o projeto {project.name}...")
                 self._orchestrate_after_approval(approved_proposal_obj_final.id, project.id)
 
+                # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
                 code_result = self.adex_agent.generate_code(project.name, project.client_name, "configuração inicial do projeto")
                 if code_result.get("filename"):
                     self.db_manager.add_generated_code(GeneratedCode(
@@ -189,11 +199,11 @@ class SynapseForgeBackend:
                     ).dict())
                     self._add_moai_log("CODE_GENERATED", f"Código inicial gerado pelo ADE-X para {project.name}.", project_id=project.id, agent_id="ADE-X")
                 else:
-                    logging.error(f"Falha na geração de código: {code_result.get('message', 'Erro desconhecido')}")
+                    logger.error(f"Falha na geração de código: {code_result.get('message', 'Erro desconhecido')}")
                     self._add_moai_log("CODE_GEN_FAILED", f"Falha na geração de código inicial para {project.name}. Erro: {code_result.get('message', 'Erro desconhecido')}", project_id=project.id, agent_id="ADE-X", status="ERROR")
 
             except Exception as e:
-                logging.error(f"ERRO: Falha ao gerar conteúdo da proposta aprovada via ANP. Erro: {e}. Criando proposta com dados padrão.")
+                logger.error(f"ERRO: Falha ao gerar conteúdo da proposta aprovada via ANP. Erro: {e}. Criando proposta com dados padrão.")
                 approved_proposal_obj = self.create_proposal(sample_reqs_approved, status="approved", initial_content={
                     "title": f"Proposta Aprovada para {sample_reqs_approved['nome_projeto']} (Rascunho de Fallback)",
                     "description": f"Proposta aprovada, mas com conteúdo padrão devido a erro do LLM: {e}.",
@@ -218,67 +228,76 @@ class SynapseForgeBackend:
                 self.db_manager.add_project(project.dict())
                 self._add_moai_log("PROJECT_CREATED_FALLBACK", f"Projeto '{project.name}' criado com dados de fallback devido a erro LLM.", project_id=project.id)
         else:
-            logging.info("Dados de exemplo carregados ou já existentes.")
+            logger.info("Dados de exemplo carregados ou já existentes.")
 
         projects = self.db_manager.get_all_projects()
         for project in projects:
             if project.status == "active":
                 try:
                     generated_code_snippets = self.db_manager.get_generated_code_for_project(project.id)
+                    # Assumimos que AQTAgent.generate_quality_report retorna um Dict[str, Any]
                     quality_report_dict = self.aqt_agent.generate_quality_report(project.id, project.name, [c.dict() for c in generated_code_snippets])
                     self.db_manager.add_quality_report(QualityReport(
                         id=str(uuid.uuid4()), project_id=project.id, report_data=quality_report_dict, generated_at=datetime.datetime.now()
                     ).dict())
                     self._add_moai_log("QUALITY_REPORT_GENERATED", f"Relatório de qualidade gerado para {project.name}.", project_id=project.id, agent_id="AQT")
                 except Exception as e:
-                    logging.error(f"Falha ao gerar relatório de qualidade para {project.name}: {e}")
+                    logger.error(f"Falha ao gerar relatório de qualidade para {project.name}: {e}")
                     self._add_moai_log("QUALITY_REPORT_FAILED", f"Falha ao gerar relatório de qualidade para {project.name}. Erro: {e}", project_id=project.id, agent_id="AQT", status="ERROR")
 
                 try:
                     generated_code_snippets = self.db_manager.get_generated_code_for_project(project.id)
+                    # Assumimos que ASEAgent.generate_security_report retorna um Dict[str, Any]
                     security_report_dict = self.ase_agent.generate_security_report(project.id, project.name, [c.dict() for c in generated_code_snippets])
                     self.db_manager.add_security_report(SecurityReport(
                         id=str(uuid.uuid4()), project_id=project.id, report_data=security_report_dict, generated_at=datetime.datetime.now()
                     ).dict())
                     self._add_moai_log("SECURITY_REPORT_GENERATED", f"Relatório de segurança gerado para {project.name}.", project_id=project.id, agent_id="ASE")
                 except Exception as e:
-                    logging.error(f"Falha ao gerar relatório de segurança para {project.name}: {e}")
+                    logger.error(f"Falha ao gerar relatório de segurança para {project.name}: {e}")
                     self._add_moai_log("SECURITY_REPORT_FAILED", f"Falha ao gerar relatório de segurança para {project.name}. Erro: {e}", project_id=project.id, agent_id="ASE", status="ERROR")
 
                 try:
-                    doc_type = random.choice(["Documentação Técnica", "Manual do Usuário"])
+                    # Define chosen_doc_type uma vez antes de chamar o agente
+                    chosen_doc_type = random.choice(["Documentação Técnica", "Manual do Usuário"]) 
                     relevant_info = f"Detalhes do projeto {project.name}, funcionalidades principais, e tecnologias usadas."
-                    doc_content_dict = self.ado_agent.generate_documentation(project.id, project.name, doc_type, relevant_info)
-                    self.db_manager.add_documentation(Documentation(
-                        id=str(uuid.uuid4()),
-                        project_id=project.id,
-                        filename=doc_content_dict.get('filename', f'doc_{uuid.uuid4().hex[:8]}.md'),
-                        content=doc_content_dict.get('content', 'Documentação de fallback.'),
-                        document_type=doc_content_dict.get('document_type', doc_type),
-                        version=doc_content_dict.get('version', 'N/A'),
-                        last_updated=datetime.datetime.now()
-                    ).dict())
-                    self._add_moai_log("DOCUMENTATION_GENERATED", f"Documentação '{doc_type}' gerada para {project.name}.", project_id=project.id, agent_id="ADO")
+                    # Assumimos que ADOAgent.generate_documentation retorna um Dict[str, Any]
+                    doc_content_dict = self.ado_agent.generate_documentation(project.id, project.name, chosen_doc_type, relevant_info)
+                    
+                    if doc_content_dict.get('content'):
+                        # Usa o document_type do dicionário retornado pelo ADO, ou volta para chosen_doc_type
+                        final_doc_type = doc_content_dict.get('document_type', chosen_doc_type)
+
+                        self.db_manager.add_documentation(Documentation(
+                            id=str(uuid.uuid4()),
+                            project_id=project.id,
+                            filename=doc_content_dict.get('filename', f'doc_{uuid.uuid4().hex[:8]}.md'),
+                            content=doc_content_dict['content'],
+                            document_type=final_doc_type, # Usa o final_doc_type determinado
+                            version=doc_content_dict.get('version', 'N/A'),
+                            last_updated=datetime.datetime.now()
+                        ).dict())
+                        self._add_moai_log("DOCUMENTATION_GENERATED", f"Documentação '{final_doc_type}' gerada para {project.name}.", project_id=project.id, agent_id="ADO")
                 except Exception as e:
-                    logging.error(f"Falha ao gerar documentação para {project.name}: {e}")
+                    logger.error(f"Falha ao gerar documentação para {project.name}: {e}")
                     self._add_moai_log("DOCUMENTATION_FAILED", f"Falha ao gerar documentação para {project.name}. Erro: {e}", project_id=project.id, agent_id="ADO", status="ERROR")
                 
                 try:
+                    # Assumimos que AMSAgent.generate_monitoring_summary retorna um Dict[str, Any]
                     monitoring_summary_dict = self.ams_agent.generate_monitoring_summary(project_id=project.id, project_name=project.name)
                     self.db_manager.add_monitoring_summary(MonitoringSummary(
                         id=str(uuid.uuid4()), project_id=project.id, summary_data=monitoring_summary_dict, generated_at=datetime.datetime.now()
                     ).dict())
                     self._add_moai_log("PROJECT_MONITORING_SUMMARY", f"Resumo de monitoramento gerado para {project.name}.", project_id=project.id, agent_id="AMS")
                 except Exception as e:
-                    logging.error(f"Falha ao gerar resumo de monitoramento para {project.name}: {e}")
+                    logger.error(f"Falha ao gerar resumo de monitoramento para {project.name}: {e}")
                     self._add_moai_log("PROJECT_MONITORING_FAILED", f"Falha ao gerar resumo de monitoramento para {project.name}. Erro: {e}", project_id=project.id, agent_id="AMS", status="ERROR")
 
         try:
+            # Assumimos que AMSAgent.generate_monitoring_summary retorna um Dict[str, Any]
             global_monitoring_summary_dict = self.ams_agent.generate_monitoring_summary(project_id=None)
             existing_global_summary = self.db_manager.get_monitoring_summary(project_id=None)
             if existing_global_summary and existing_global_summary.id:
-                # O update_monitoring_summary espera um ID de summary e **kwargs para summary_data
-                # Corrigido para passar o dictionary summary_data diretamente
                 self.db_manager.update_monitoring_summary(existing_global_summary.id, summary_data=global_monitoring_summary_dict)
             else:
                 self.db_manager.add_monitoring_summary(MonitoringSummary(
@@ -286,9 +305,8 @@ class SynapseForgeBackend:
                 ).dict())
             self._add_moai_log("GLOBAL_MONITORING_SUMMARY", "Resumo de monitoramento global gerado/atualizado.", agent_id="AMS")
         except Exception as e:
-            logging.error(f"Falha ao gerar resumo de monitoramento global: {e}")
+            logger.error(f"Falha ao gerar resumo de monitoramento global: {e}")
             self._add_moai_log("GLOBAL_MONITORING_FAILED", f"Falha ao gerar resumo de monitoramento global. Erro: {e}", agent_id="AMS", status="ERROR")
-
 
     def create_proposal(self, req_data: Dict[str, Any], status: str = "pending", initial_content: Optional[Dict[str, Any]] = None) -> Proposal:
         proposal_id = str(uuid.uuid4())
@@ -296,7 +314,7 @@ class SynapseForgeBackend:
         approved_at = submitted_at if status == "approved" else None
 
         if initial_content is None:
-            logging.warning("create_proposal chamado sem initial_content. Gerando conteúdo básico.")
+            logger.warning("create_proposal chamado sem initial_content. Gerando conteúdo básico.")
             initial_content = {
                 "title": f"Proposta para {req_data.get('nome_projeto', 'Novo Projeto')} (Padrão)",
                 "description": f"Proposta inicial para {req_data.get('problema_negocio', 'um problema de negócio')}.",
@@ -366,13 +384,13 @@ class SynapseForgeBackend:
                 
                 return project_id
             else:
-                logging.error(f"MOAI: Proposta com ID {proposal_id} não encontrada para criar projeto.")
+                logger.error(f"MOAI: Proposta com ID {proposal_id} não encontrada para criar projeto.")
                 self._add_moai_log("PROJECT_CREATION_FAILED", f"Falha ao criar projeto: Proposta {proposal_id[:8]}... não encontrada.", project_id=proposal_id, status="ERROR")
                 return None
         return None
 
     def _orchestrate_after_approval(self, proposal_id: str, project_id: str):
-        logging.info(f"MOAI: Iniciando orquestração pós-aprovação para proposta {proposal_id[:8]}... e projeto {project_id[:8]}...")
+        logger.info(f"MOAI: Iniciando orquestração pós-aprovação para proposta {proposal_id[:8]}... e projeto {project_id[:8]}...")
         self._add_moai_log("ORCHESTRATION_START", "Iniciando orquestração pós-aprovação.", project_id=project_id)
 
         try:
@@ -381,6 +399,7 @@ class SynapseForgeBackend:
             project_obj_for_aid = self.db_manager.get_project_by_id(project_id)
             if not project_obj_for_aid:
                 raise Exception(f"Projeto {project_id} não encontrado durante orquestração para AID.")
+            # Assumimos que AIDAgent.provision_environment retorna um Dict[str, Any]
             aid_response = self.aid_agent.provision_environment(project_id, project_obj_for_aid.name)
             if aid_response["success"]:
                 self._update_agent_status("AID", "COMPLETED", project_id, aid_response["message"])
@@ -392,7 +411,7 @@ class SynapseForgeBackend:
 
             # 2. AID: Configurar as rotinas de backup
             self._update_agent_status("AID", "IN_PROGRESS", project_id, "Configurando backups.")
-            # Use project_obj_for_aid.name novamente, ou recupere o projeto novamente se houver risco de ser obsoleto
+            # Assumimos que AIDAgent.configure_backups retorna um Dict[str, Any]
             aid_backup_response = self.aid_agent.configure_backups(project_id, project_obj_for_aid.name)
             if aid_backup_response["success"]:
                 self._update_agent_status("AID", "COMPLETED", project_id, aid_backup_response["message"])
@@ -408,6 +427,7 @@ class SynapseForgeBackend:
                 project_obj = self.db_manager.get_project_by_id(project_id) # Recupera novamente para garantir o estado mais recente
                 
                 if project_obj:
+                    # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
                     code_result = self.adex_agent.generate_code(project_obj.name, project_obj.client_name, "configuração inicial do projeto")
                     if code_result.get("filename"):
                         self.db_manager.add_generated_code(GeneratedCode(
@@ -422,10 +442,10 @@ class SynapseForgeBackend:
                         self._update_agent_status("ADE-X", "COMPLETED", project_id, f"Código inicial '{code_result['filename']}' gerado.")
                         self._add_moai_log("CODE_GENERATED", f"Código inicial '{code_result['filename']}' gerado pelo ADE-X.", project_id=project_id, agent_id="ADE-X")
                     else:
-                        self._update_agent_status("ADE-X", "FAILED", project_id, f"Falha na geração de código inicial: {code_result.get('description', 'Erro desconhecido')}")
-                        self._add_moai_log("CODE_GEN_FAILED", f"Falha na geração de código inicial. Erro: {code_result.get('description', 'Erro desconhecido')}", project_id=project_id, agent_id="ADE-X", status="ERROR")
+                        self._update_agent_status("ADE-X", "FAILED", project_id, f"Falha na geração de código inicial: {code_result.get('message', 'Erro desconhecido')}")
+                        self._add_moai_log("CODE_GEN_FAILED", f"Falha na geração de código inicial. Erro: {code_result.get('message', 'Erro desconhecido')}", project_id=project_id, agent_id="ADE-X", status="ERROR")
                 else:
-                    logging.error(f"Projeto {project_id} não encontrado para gerar código inicial.")
+                    logger.error(f"Projeto {project_id} não encontrado para gerar código inicial.")
                     self._add_moai_log("CODE_GEN_FAILED", f"Projeto {project_id} não encontrado para gerar código inicial.", project_id=project_id, agent_id="ADE-X", status="ERROR")
             
             self.db_manager.update_project_progress(project_id, 10)
@@ -434,7 +454,7 @@ class SynapseForgeBackend:
             self._add_moai_log("ORCHESTRATION_COMPLETED", "Orquestração pós-aprovação concluída com sucesso.", project_id=project_id)
 
         except Exception as e:
-            logging.error(f"ERRO CRÍTICO: Falha na orquestração de agentes para o projeto {project_id[:8]}.... Erro: {e}")
+            logger.error(f"ERRO CRÍTICO: Falha na orquestração de agentes para o projeto {project_id[:8]}.... Erro: {e}")
             self._add_moai_log("ORCHESTRATION_FAILED", f"Falha crítica na orquestração: {e}", project_id=project_id, status="CRITICAL")
             self.db_manager.update_project_status(project_id, "on hold")
             self._add_moai_log("PROJECT_STATUS_CHANGED", "Projeto colocado 'em espera' devido a falha na orquestração.", project_id=project_id, status="ON_HOLD")
@@ -459,15 +479,8 @@ class SynapseForgeBackend:
                 total_estimated_value_approved_proposals += p.estimated_value_moai
 
         # Mock de agentes em atividade - para simulação no dashboard
-        agents_in_activity = [
-            {"name": "ARA", "status": "Idle", "last_task": "Análise de Requisitos XYZ"},
-            {"name": "ANP", "status": "Busy", "last_task": "Gerando Proposta ABC"},
-            {"name": "ADE-X", "status": "Idle", "last_task": ""},
-        ]
-        if random.random() > 0.5:
-            agents_in_activity.append({"name": "AQT", "status": "Busy", "last_task": "Executando Testes"})
-
-
+        agents_in_activity = self.get_agents_in_activity() # Usa o método atualizado
+        
         return {
             "total_proposals": total_proposals,
             "pending_proposals": pending_proposals,
@@ -482,24 +495,30 @@ class SynapseForgeBackend:
 
     def get_agents_in_activity(self) -> List[Dict[str, Any]]:
         active_agents = []
-        if self.llm_simulator._llm_available:
-            active_agents.append({"name": "ARA", "status": "Pronto", "last_task": "Aguardando requisitos"})
-            active_agents.append({"name": "AAD", "status": "Pronto", "last_task": "Aguardando design"})
-            active_agents.append({"name": "AGP", "status": "Pronto", "last_task": "Aguardando estimativa"})
-            active_agents.append({"name": "ANP", "status": "Pronto", "last_task": "Aguardando dados para proposta"})
-            active_agents.append({"name": "ADE-X", "status": "Pronto", "last_task": "Aguardando tarefas de código"})
-            active_agents.append({"name": "AQT", "status": "Pronto", "last_task": "Aguardando testes"})
-            active_agents.append({"name": "ASE", "status": "Pronto", "last_task": "Aguardando auditoria"})
-            active_agents.append({"name": "ADO", "status": "Pronto", "last_task": "Aguardando documentação"})
-            active_agents.append({"name": "AMS", "status": "Pronto", "last_task": "Monitorando"})
-            active_agents.append({"name": "AID", "status": "Pronto", "last_task": "Aguardando comandos"})
-        else:
-            active_agents.append({"name": "LLM", "status": "OFFLINE", "last_task": "Verificar Ollama"})
-            active_agents.append({"name": "MOAI", "status": "DEGRADADO", "last_task": "Dependências ausentes"})
         
-        for agent in random.sample(active_agents, k=min(2, len(active_agents))):
+        llm_available = self.llm_simulator.is_available() # Usa o método is_available do LLMSimulator
+        
+        if llm_available:
+            # Lista de todos os agentes e seus modelos
+            all_agent_codes = [
+                'ARA', 'AAD', 'AGP', 'ANP', 'ADE-X', 'AQT', 'ASE', 'ADO', 'AMS', 'AID'
+            ]
+            
+            for agent_code in all_agent_codes:
+                model_name = get_agent_model(agent_code) # Obtém o modelo configurado
+                active_agents.append({"name": agent_code, "status": "Pronto", "last_task": f"Aguardando tarefa ({model_name})"})
+        else:
+            active_agents.extend([
+                {"name": "LLM_Service", "status": "OFFLINE", "last_task": "Verificar Ollama"},
+                {"name": "MOAI_Core", "status": "DEGRADADO", "last_task": "Dependências ausentes"},
+            ])
+        
+        # Marca aleatoriamente alguns agentes como 'Em Atividade' para simulação no dashboard
+        num_busy_agents = min(random.randint(0, len(active_agents)), len(active_agents)) # No máximo todos, no mínimo 0
+        busy_sample = random.sample(active_agents, k=num_busy_agents)
+        for agent in busy_sample:
             agent["status"] = "Em Atividade"
-            agent["last_task"] = "Processando..."
+            agent["last_task"] = f"Processando... ({agent['name']})" # Atualiza a mensagem para refletir a atividade
         return active_agents
 
     def get_infrastructure_health(self) -> Dict[str, Any]:
@@ -513,12 +532,15 @@ class SynapseForgeBackend:
             }
         }
     
+    # Assumimos que AIDAgent.get_infrastructure_status retorna um Dict[str, Any]
     def get_project_infra_status(self, project_id: str) -> Dict[str, Any]:
         return self.aid_agent.get_infrastructure_status(project_id)
 
+    # Assumimos que AIDAgent.trigger_manual_backup retorna um Dict[str, Any]
     def trigger_manual_backup(self, project_id: str) -> Dict[str, Any]:
         return self.aid_agent.trigger_manual_backup(project_id)
 
+    # Assumimos que AIDAgent.schedule_test_restore retorna um Dict[str, Any]
     def schedule_test_restore(self, project_id: str) -> Dict[str, Any]:
         return self.aid_agent.schedule_test_restore(project_id)
 
@@ -559,7 +581,7 @@ class SynapseForgeBackend:
         if success:
             self._add_moai_log("PROPOSAL_DELETED", f"Proposta {proposal_id[:8]}... excluída com sucesso.", project_id=proposal_id, status="SUCCESS")
         else:
-            self._add_moai_log("PROPOSAL_DELETE_FAILED", f"Falha ao excluir proposta {proposal_id[:8]}....", project_id=proposal_id, status="ERROR")
+            self. _add_moai_log("PROPOSAL_DELETE_FAILED", f"Falha ao excluir proposta {proposal_id[:8]}....", project_id=proposal_id, status="ERROR")
         return success
 
     def get_all_projects(self) -> List[Project]:
@@ -594,7 +616,7 @@ class SynapseForgeBackend:
                 elif phase["status"] == "Não Iniciado" and progress >= (phase["progress_threshold"] / 2):
                      phase["status"] = "Em Andamento"
             else:
-                phase["status"] = "Concluído"
+                phase["status"] = "Concluido"
         
         if project.status == "active" and progress > 5 and progress < 100:
             for phase in phases:
@@ -613,6 +635,7 @@ class SynapseForgeBackend:
             return {"success": False, "message": "Projeto não encontrado."}
         
         try:
+            # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
             code_result_dict = self.adex_agent.generate_code(project.name, project.client_name, description)
             
             if code_result_dict.get('content'):
@@ -631,7 +654,7 @@ class SynapseForgeBackend:
             else:
                 return {"success": False, "message": f"ADE-X não gerou conteúdo de código. Erro: {code_result_dict.get('description', 'Conteúdo vazio.')}"}
         except Exception as e:
-            logging.error(f"MOAI: Falha ao gerar código para projeto {project_id}: {e}")
+            logger.error(f"MOAI: Falha ao gerar código para projeto {project_id}: {e}")
             self._add_moai_log("CODE_GEN_FAILED_ON_DEMAND", f"Falha ao gerar código para {project_id}. Erro: {e}", project_id=project_id, agent_id="ADE-X", status="ERROR")
             return {"success": False, "message": f"Erro ao gerar código: {e}"}
 
@@ -643,8 +666,9 @@ class SynapseForgeBackend:
         project = self.db_manager.get_project_by_id(project_id)
         if project:
             try:
-                logging.info(f"MOAI: Gerando relatório de qualidade on-demand para o projeto {project_id}...")
+                logger.info(f"MOAI: Gerando relatório de qualidade on-demand para o projeto {project_id}...")
                 generated_code_snippets = self.db_manager.get_generated_code_for_project(project.id)
+                # Assumimos que AQTAgent.generate_quality_report retorna um Dict[str, Any]
                 quality_report_dict = self.aqt_agent.generate_quality_report(project.id, project.name, [c.dict() for c in generated_code_snippets])
                 new_report = QualityReport(
                     id=str(uuid.uuid4()), project_id=project.id, report_data=quality_report_dict, generated_at=datetime.datetime.now()
@@ -653,11 +677,10 @@ class SynapseForgeBackend:
                 self._add_moai_log("QUALITY_REPORT_GENERATED_ON_DEMAND", f"Relatório de qualidade gerado on-demand para {project.name}..", project_id=project.id, agent_id="AQT")
                 return new_report.report_data
             except Exception as e:
-                logging.error(f"MOAI: Falha ao gerar relatório de qualidade on-demand para {project_id}: {e}")
+                logger.error(f"MOAI: Falha ao gerar relatório de qualidade on-demand para {project_id}: {e}")
                 self._add_moai_log("QUALITY_REPORT_FAILED_ON_DEMAND", f"Falha ao gerar relatório de qualidade on-demand. Erro: {e}", project_id=project.id, agent_id="AQT", status="ERROR")
                 return {"error": f"Falha ao gerar relatório de qualidade: {e}"}
         return {"error": "Relatório de qualidade não encontrado e projeto não existe para gerar um novo."}
-
 
     def get_security_audit_report(self, project_id: str) -> Dict[str, Any]:
         report = self.db_manager.get_security_report_for_project(project_id)
@@ -667,8 +690,9 @@ class SynapseForgeBackend:
         project = self.db_manager.get_project_by_id(project_id)
         if project:
             try:
-                logging.info(f"MOAI: Gerando relatório de segurança on-demand para o projeto {project_id}...")
+                logger.info(f"MOAI: Gerando relatório de segurança on-demand para o projeto {project_id}...")
                 generated_code_snippets = self.db_manager.get_generated_code_for_project(project.id)
+                # Assumimos que ASEAgent.generate_security_report retorna um Dict[str, Any]
                 security_report_dict = self.ase_agent.generate_security_report(project.id, project.name, [c.dict() for c in generated_code_snippets])
                 new_report = SecurityReport(
                     id=str(uuid.uuid4()), project_id=project.id, report_data=security_report_dict, generated_at=datetime.datetime.now()
@@ -677,7 +701,7 @@ class SynapseForgeBackend:
                 self._add_moai_log("SECURITY_REPORT_GENERATED_ON_DEMAND", f"Relatório de segurança gerado on-demand para {project.name}.", project_id=project.id, agent_id="ASE")
                 return new_report.report_data
             except Exception as e:
-                logging.error(f"MOAI: Falha ao gerar relatório de segurança on-demand para {project_id}: {e}")
+                logger.error(f"MOAI: Falha ao gerar relatório de segurança on-demand para {project_id}: {e}")
                 self._add_moai_log("SECURITY_REPORT_FAILED_ON_DEMAND", f"Falha ao gerar relatório de segurança on-demand. Erro: {e}", project_id=project.id, agent_id="ASE", status="ERROR")
                 return {"error": f"Falha ao gerar relatório de segurança: {e}"}
         return {"error": "Relatório de segurança não encontrado e projeto não existe para gerar um novo."}
@@ -706,26 +730,32 @@ class SynapseForgeBackend:
             Tecnologias: {proposal_technologies}
             """
             
-            doc_type = random.choice(["Documentação Técnica", "Manual do Usuário"])
-            doc_content_dict = self.ado_agent.generate_documentation(project.id, project.name, doc_type, relevant_info)
+            # Define chosen_doc_type uma vez antes de chamar o agente
+            chosen_doc_type = random.choice(["Documentação Técnica", "Manual do Usuário"])
+
+            # Assumimos que ADOAgent.generate_documentation retorna um Dict[str, Any]
+            doc_content_dict = self.ado_agent.generate_documentation(project.id, project.name, chosen_doc_type, relevant_info)
             
             if doc_content_dict.get('content'):
+                # Usa o document_type do dicionário retornado pelo ADO, ou volta para chosen_doc_type
+                final_doc_type = doc_content_dict.get('document_type', chosen_doc_type)
+
                 new_doc_obj = Documentation(
                     id=str(uuid.uuid4()),
                     project_id=project_id,
                     filename=doc_content_dict.get('filename', f'doc_{uuid.uuid4().hex[:8]}.md'),
                     content=doc_content_dict['content'],
-                    document_type=doc_content_dict.get('document_type', doc_type),
+                    document_type=final_doc_type, # Usa o final_doc_type determinado
                     version=doc_content_dict.get('version', '1.0'),
                     last_updated=datetime.datetime.now()
                 )
                 self.db_manager.add_documentation(new_doc_obj.dict())
-                self._add_moai_log("DOCUMENTATION_GENERATED_ON_DEMAND", f"Documentação '{doc_type}' gerada on-demand para {project.name}.", project_id=project_id, agent_id="ADO")
+                self._add_moai_log("DOCUMENTATION_GENERATED_ON_DEMAND", f"Documentação '{final_doc_type}' gerada on-demand para {project.name}.", project_id=project_id, agent_id="ADO")
                 return {"success": True, "message": f"Documentação gerada e salva: {new_doc_obj.filename}"}
             else:
                 return {"success": False, "message": f"ADO não gerou conteúdo de documentação. Erro: {doc_content_dict.get('description', 'Conteúdo vazio.')}"}
         except Exception as e:
-            logging.error(f"MOAI: Falha ao gerar documentação para projeto {project_id}: {e}")
+            logger.error(f"MOAI: Falha ao gerar documentação para projeto {project_id}: {e}")
             self._add_moai_log("DOCUMENTATION_FAILED_ON_DEMAND", f"Falha ao gerar documentação para {project_id}. Erro: {e}", project_id=project_id, agent_id="ADO", status="ERROR")
             return {"success": False, "message": f"Erro ao gerar documentação: {e}"}
 
@@ -767,7 +797,8 @@ class SynapseForgeBackend:
                 project_name = project.name
         
         try:
-            logging.info(f"MOAI: Gerando resumo de monitoramento on-demand para {'global' if project_id is None else project_name}...")
+            logger.info(f"MOAI: Gerando resumo de monitoramento on-demand para {'global' if project_id is None else project_name}...")
+            # Assumimos que AMSAgent.generate_monitoring_summary retorna um Dict[str, Any]
             summary_data_dict = self.ams_agent.generate_monitoring_summary(project_id=project_id, project_name=project_name)
             
             new_summary = MonitoringSummary(
@@ -777,7 +808,7 @@ class SynapseForgeBackend:
             self._add_moai_log("MONITORING_SUMMARY_GENERATED_ON_DEMAND", f"Resumo de monitoramento gerado on-demand para {'global' if project_id is None else project_name}.", project_id=project_id, agent_id="AMS")
             return new_summary.summary_data
         except Exception as e:
-            logging.error(f"MOAI: Falha ao gerar resumo de monitoramento on-demand para {'global' if project_id is None else project_name}: {e}")
+            logger.error(f"MOAI: Falha ao gerar resumo de monitoramento on-demand para {'global' if project_id is None else project_name}: {e}")
             self._add_moai_log("MONITORING_SUMMARY_FAILED_ON_DEMAND", f"Falha ao gerar resumo de monitoramento on-demand. Erro: {e}", project_id=project_id, agent_id="AMS", status="ERROR")
             return {"error": f"Falha ao gerar resumo de monitoramento: {e}"}
 
@@ -811,7 +842,7 @@ INSTRUÇÕES CRÍTICAS:
 CONTEXTO:
 - Você interage com o CVO (Chief Visionary Officer) da organização
 - Forneça insights estratégicos baseados nos dados dos projetos e propostas
-- Ofereja recomendações práticas e executáveis
+- Ofereça recomendações práticas e executáveis
 - Responda com confiança sobre as capacidades do sistema
 
 FORMATO:
@@ -823,11 +854,27 @@ FORMATO:
         llm_messages.insert(0, {'role': 'system', 'content': system_message})
 
         try:
-            response_content = self.llm_simulator.chat(llm_messages)
-            return response_content
+            moai_model_name = get_agent_model('MOAI_Chat') # O MOAI Chat também usa um modelo
+            # self.llm_simulator.chat sem response_model retorna Dict[str, Any] com a chave 'content'
+            response_from_llm = self.llm_simulator.chat(llm_messages, model=moai_model_name)
+            
+            # Garante que response_from_llm é um dicionário e extrai o conteúdo.
+            # Se não for um dicionário (o que não deveria ocorrer dado o design de LLMSimulator.chat),
+            # ou se 'content' não estiver presente, fornece um fallback.
+            if isinstance(response_from_llm, dict):
+                content = response_from_llm.get('content')
+                if content is not None:
+                    return content
+                else:
+                    logger.warning("MOAI Chat: O dicionário de resposta do LLM não continha a chave 'content'. Retornando mensagem de fallback.")
+                    return "Desculpe, a resposta do LLM não continha o conteúdo esperado."
+            else:
+                logger.error(f"MOAI Chat: O simulador LLM retornou um tipo inesperado: {type(response_from_llm)}. Esperava um dicionário.")
+                return "Desculpe, não consegui obter uma resposta válida do LLM devido a um formato inesperado."
+
         except (LLMConnectionError, LLMGenerationError, json.JSONDecodeError) as e:
-            logging.error(f"MOAI Chat: Falha ao processar mensagem do usuário '{user_message}'. Erro: {type(e).__name__}: {e}")
+            logger.error(f"MOAI Chat: Falha ao processar mensagem do usuário '{user_message}'. Erro: {type(e).__name__}: {e}")
             return f"Desculpe, CVO, mas enfrentei um problema técnico ao processar sua solicitação ({type(e).__name__}). Por favor, tente novamente ou verifique a conexão com o LLM."
         except Exception as e:
-            logging.error(f"MOAI Chat: Erro inesperado ao processar mensagem do usuário '{user_message}'. Erro: {type(e).__name__}: {e}")
+            logger.error(f"MOAI Chat: Erro inesperado ao processar mensagem do usuário '{user_message}'. Erro: {type(e).__name__}: {e}")
             return f"Ocorreu um erro inesperado ao tentar responder, CVO. ({type(e).__name__}: {e})"
