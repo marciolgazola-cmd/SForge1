@@ -59,3 +59,5 @@ class AADAgent:
         except Exception as e:
             logger.error(f"AADAgent: Erro inesperado ao projetar solução: {e}")
             return {"error": str(e), "message": f"Erro inesperado no design da solução: {e}", "architecture_overview": "(Erro inesperado)"}
+
+
