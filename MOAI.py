@@ -90,6 +90,56 @@ class SynapseForgeBackend:
                 return None
         return None
 
+    def _build_code_generation_brief(self, project: Project, base_description: str) -> str:
+        """
+        Constrói um briefing detalhado para o ADE-X usando contexto do projeto/proposta.
+        """
+        base_description = base_description.strip() if base_description else "Implementação solicitada pelo CVO."
+        lines = [
+            "=== CONTEXTO DO PROJETO ===",
+            f"Projeto: {project.name}",
+            f"Cliente: {project.client_name}",
+            "=== REQUISITOS ESPECÍFICOS ===",
+            base_description,
+        ]
+
+        proposal = self.db_manager.get_proposal_by_id(project.proposal_id) if project.proposal_id else None
+        if proposal:
+            requirements = proposal.requirements or {}
+            def normalize_value(value: Any) -> str:
+                if value is None:
+                    return ""
+                if isinstance(value, list):
+                    return ", ".join(str(item).strip() for item in value if str(item).strip())
+                return str(value).strip()
+
+            def add_line(label: str, value: Any):
+                value_str = normalize_value(value)
+                if value_str:
+                    lines.append(f"{label}: {value_str}")
+
+            add_line("Problema de negócio", requirements.get('problema_negocio'))
+            add_line("Objetivos do projeto", requirements.get('objetivos_projeto'))
+            add_line("Funcionalidades esperadas", requirements.get('funcionalidades_esperadas'))
+            add_line("Restrições", requirements.get('restricoes'))
+            add_line("Solução proposta pelo MOAI", proposal.solution_proposal_moai)
+            add_line("Escopo aprovado", proposal.scope_moai)
+            add_line("Tecnologias sugeridas", proposal.technologies_suggested_moai)
+            add_line("Público-alvo", requirements.get('publico_alvo'))
+        else:
+            lines.append("Contexto adicional: Proposta associada não encontrada no momento.")
+
+        lines.extend([
+            "=== ORIENTAÇÕES DE IMPLEMENTAÇÃO ===",
+            "- Cubra todas as funcionalidades listadas acima. Não devolva exemplos genéricos.",
+            "- Estruture o código em funções ou classes reutilizáveis e inclua tratamento de erros.",
+            "- Se o escopo citar integrações (e-mail, APIs, bancos), implemente stubs ou camadas reais.",
+            "- Inclua comentários essenciais e, se fizer sentido, um bloco `if __name__ == '__main__':` demonstrando uso.",
+            "- Utilize as tecnologias recomendadas quando possível. Caso não seja viável, justifique via comentários.",
+            "- Entregue o código pronto para execução, evitando trechos placeholders."
+        ])
+        return "\n".join(lines)
+
     def _initialize_data(self):
         logger.info("Inicializando dados de exemplo...")
         if not self.db_manager.get_all_proposals():
@@ -186,7 +236,8 @@ class SynapseForgeBackend:
                 self._orchestrate_after_approval(approved_proposal_obj_final.id, project.id)
 
                 # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
-                code_result = self.adex_agent.generate_code(project.name, project.client_name, "configuração inicial do projeto")
+                initial_brief = self._build_code_generation_brief(project, "Configuração inicial do projeto (estrutura base, scripts de setup e README).")
+                code_result = self.adex_agent.generate_code(project.name, project.client_name, initial_brief)
                 if code_result.get("filename"):
                     self.db_manager.add_generated_code(GeneratedCode(
                         id=str(uuid.uuid4()),
@@ -428,7 +479,8 @@ class SynapseForgeBackend:
                 
                 if project_obj:
                     # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
-                    code_result = self.adex_agent.generate_code(project_obj.name, project_obj.client_name, "configuração inicial do projeto")
+                    code_brief = self._build_code_generation_brief(project_obj, "Configuração inicial do projeto (setup de ambiente, estrutura de diretórios e ponto de entrada).")
+                    code_result = self.adex_agent.generate_code(project_obj.name, project_obj.client_name, code_brief)
                     if code_result.get("filename"):
                         self.db_manager.add_generated_code(GeneratedCode(
                             id=str(uuid.uuid4()),
@@ -635,8 +687,9 @@ class SynapseForgeBackend:
             return {"success": False, "message": "Projeto não encontrado."}
         
         try:
+            contextual_description = self._build_code_generation_brief(project, description)
             # Assumimos que ADEXAgent.generate_code retorna um Dict[str, Any]
-            code_result_dict = self.adex_agent.generate_code(project.name, project.client_name, description)
+            code_result_dict = self.adex_agent.generate_code(project.name, project.client_name, contextual_description)
             
             if code_result_dict.get('content'):
                 generated_code_obj = GeneratedCode(

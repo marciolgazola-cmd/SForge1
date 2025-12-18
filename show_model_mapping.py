@@ -20,13 +20,13 @@ def print_header(text: str):
 
 def print_agent_card(agent_name: str, config: Dict[str, Any]):
     """Imprimir card de agente"""
-    model_name = config['model'] # Nome exato do modelo (ex: 'llama3:8b')
+    model_name = config['model'] # Nome exato do modelo (ex: 'llama3:8b-instruct-q8_0')
     priority = config['priority']
     
     # Cores para modelos (usando código ANSI) - Atualizado para os nomes específicos
     color_map = {
         'MISTRAL': '\033[94m',    # Azul
-        'LLAMA3:8B': '\033[92m',      # Verde
+        'LLAMA3:8B-INSTRUCT-Q8_0': '\033[92m',      # Verde
         'CODELLAMA:13B': '\033[93m',   # Amarelo
         'MIXTRAL:8X7B-INSTRUCT': '\033[95m' # Magenta para Mixtral
     }
@@ -74,7 +74,7 @@ def show_by_model():
             print(f"        • Top P: 0.85 (diversidade moderada)")
             print(f"        • Contexto: 8192 tokens")
             print(f"        • Melhor para: Versatilidade e velocidade")
-        elif model == 'llama3:8b': # Nome exato
+        elif model == 'llama3:8b-instruct-q8_0': # Nome exato
             print(f"     ✨ Características:")
             print(f"        • Temperatura: 0.3 (determinístico)")
             print(f"        • Top P: 0.9 (seleção rigorosa)")

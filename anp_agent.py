@@ -1,8 +1,8 @@
 # anp_agent.py
 import logging
 import json
-from typing import Dict, Any, cast # Adicionado 'cast'
-from pydantic import BaseModel, Field
+from typing import Dict, Any
+from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from agent_model_mapping import get_agent_model
 
@@ -33,6 +33,70 @@ class ANPAgent:
         self.agp_agent = agp_agent
         self.model_name = get_agent_model('ANP') # Obtém o modelo para ANP
         logger.info(f"ANPAgent inicializado com modelo {self.model_name} e pronto para gerar propostas comerciais.")
+
+    def _append_schema_instruction(self, messages: list[Dict[str, str]]):
+        schema = ProposalContentOutput.model_json_schema()
+        llm_schema_instruction = {
+            "type": "object",
+            "properties": schema.get("properties", {}),
+            "required": schema.get("required", [])
+        }
+        schema_str = json.dumps(llm_schema_instruction, indent=2, ensure_ascii=False)
+        instruction = (
+            "\n\nIMPORTANTE: Responda em JSON preenchendo todos os campos abaixo com informações detalhadas "
+            "sobre a proposta. Não deixe valores vazios ou genéricos.\n"
+            f"{schema_str}\n"
+        )
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"] += instruction
+        else:
+            messages.append({"role": "user", "content": instruction})
+
+    def _normalize_str_field(self, value: Any, default: str) -> str:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned if cleaned else default
+        if value is None:
+            return default
+        if isinstance(value, (dict, list)):
+            try:
+                value = json.dumps(value, ensure_ascii=False, indent=2)
+            except Exception:
+                value = str(value)
+        else:
+            value = str(value)
+        cleaned = value.strip()
+        return cleaned if cleaned else default
+
+    def _normalize_estimated_value(self, raw_value: Any) -> float:
+        if isinstance(raw_value, (int, float)):
+            return float(raw_value)
+        if raw_value is None:
+            return 0.0
+        cleaned = str(raw_value).replace("R$", "").replace(".", "").replace(",", ".")
+        try:
+            return float(cleaned)
+        except ValueError:
+            logger.warning(f"ANPAgent: Não foi possível converter estimated_value '{raw_value}'. Usando 0.0.")
+            return 0.0
+
+    def _normalize_proposal_payload(self, payload: Dict[str, Any], req_data: Dict[str, Any]) -> ProposalContentOutput:
+        normalized = {
+            "title": self._normalize_str_field(payload.get("title"), f"Proposta para {req_data.get('nome_projeto', 'Projeto sem título')}"),
+            "description": self._normalize_str_field(payload.get("description"), "Descrição não fornecida."),
+            "problem_understanding_moai": self._normalize_str_field(payload.get("problem_understanding_moai"), "Entendimento não informado."),
+            "solution_proposal_moai": self._normalize_str_field(payload.get("solution_proposal_moai"), "Solução não informada."),
+            "scope_moai": self._normalize_str_field(payload.get("scope_moai"), "Escopo não definido."),
+            "technologies_suggested_moai": self._normalize_str_field(payload.get("technologies_suggested_moai"), "Tecnologias não informadas."),
+            "estimated_value_moai": self._normalize_estimated_value(payload.get("estimated_value_moai")),
+            "estimated_time_moai": self._normalize_str_field(payload.get("estimated_time_moai"), "Prazo não definido."),
+            "terms_conditions_moai": self._normalize_str_field(payload.get("terms_conditions_moai"), "Termos e condições a definir.")
+        }
+        try:
+            return ProposalContentOutput(**normalized)
+        except ValidationError as ve:
+            logger.error(f"ANPAgent: Dados normalizados não correspondem ao esquema: {ve}")
+            raise LLMGenerationError(f"Dados normalizados inválidos para proposta: {ve}") from ve
 
     def generate_proposal_content(self, req_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -79,16 +143,27 @@ class ANPAgent:
                 {"role": "user", "content": prompt}
             ]
 
+            self._append_schema_instruction(messages)
+
             # Passa o nome do modelo explicitamente e força json_mode
             response_raw = self.llm_simulator.chat(
                 messages=messages,
                 model=self.model_name,
-                response_model=ProposalContentOutput,
                 json_mode=True
             )
-            response: ProposalContentOutput = cast(ProposalContentOutput, response_raw) # Cast para informar o Pylance
+            raw_content = response_raw.get('content') if isinstance(response_raw, dict) else None
+            if not raw_content:
+                raise LLMGenerationError("LLM não retornou conteúdo ao gerar a proposta.")
+
+            try:
+                payload = json.loads(raw_content)
+            except json.JSONDecodeError as jde:
+                raise LLMGenerationError(f"LLM não retornou JSON válido para proposta: {jde}") from jde
+
+            proposal_output = self._normalize_proposal_payload(payload, req_data)
+
             logger.info(f"ANPAgent: Proposta comercial gerada com sucesso usando {self.model_name}.")
-            return response.model_dump() # Converte o modelo Pydantic para dicionário
+            return proposal_output.model_dump() # Converte o modelo Pydantic para dicionário
 
         except (LLMConnectionError, LLMGenerationError, ValueError) as e:
             logger.error(f"ANPAgent: Falha ao gerar proposta comercial com o LLM {self.model_name} ou agente auxiliar. Erro: {e}")

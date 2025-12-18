@@ -7,20 +7,20 @@ logger = logging.getLogger(__name__)
 # Mapeamento dos agentes para os modelos LLM que devem utilizar
 # Certifique-se de que estes modelos estão disponíveis no seu servidor Ollama
 AGENT_MODEL_MAP: Dict[str, str] = {
-    'ARA': 'llama3:8b',
+    'ARA': 'llama3:8b-instruct-q8_0',
     # ALTERAÇÃO AQUI: Use o nome exato do modelo Mixtral que você tem
     'AAD': 'mixtral:8x7b-instruct-v0.1-q4_K_M', # <--- CORRIGIDO
-    'AGP': 'llama3:8b',
+    'AGP': 'llama3:8b-instruct-q8_0',
     # ALTERAÇÃO AQUI: Use o nome exato do modelo Mixtral que você tem
     'ANP': 'mixtral:8x7b-instruct-v0.1-q4_K_M', # <--- CORRIGIDO
     'ADE-X': 'codellama:13b',
-    'AQT': 'llama3:8b',
+    'AQT': 'llama3:8b-instruct-q8_0',
     # ALTERAÇÃO AQUI: Use o nome exato do modelo Mixtral que você tem
     'ASE': 'mixtral:8x7b-instruct-v0.1-q4_K_M', # <--- CORRIGIDO
-    'ADO': 'llama3:8b',
-    'AMS': 'llama3:8b',
+    'ADO': 'llama3:8b-instruct-q8_0',
+    'AMS': 'llama3:8b-instruct-q8_0',
     'AID': 'codellama:13b',
-    'MOAI_Chat': 'llama3:8b',
+    'MOAI_Chat': 'llama3:8b-instruct-q8_0',
 }
 
 def get_agent_model(agent_code: str) -> str:
@@ -30,8 +30,7 @@ def get_agent_model(agent_code: str) -> str:
     """
     model = AGENT_MODEL_MAP.get(agent_code)
     if not model:
-        fallback_model = 'llama3:8b'
+        fallback_model = 'llama3:8b-instruct-q8_0'
         logger.warning(f"Modelo LLM não especificado para o agente '{agent_code}'. Usando o modelo padrão: '{fallback_model}'.")
         return fallback_model
     return model
-

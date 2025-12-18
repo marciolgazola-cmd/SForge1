@@ -1,8 +1,8 @@
 # adex_agent.py
 import logging
-import json # Adicionado
-from typing import Dict, Any, List, cast # Adicionado 'cast'
-from pydantic import BaseModel, Field
+import json
+from typing import Dict, Any, List
+from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 from agent_model_mapping import get_agent_model
 
@@ -20,6 +20,42 @@ class ADEXAgent:
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('ADE-X') # Obtém o modelo para ADE-X
         logger.info(f"ADEXAgent inicializado com modelo {self.model_name} e pronto para gerar código.")
+
+    def _append_schema_instruction(self, messages: List[Dict[str, str]]):
+        schema = GeneratedCodeOutput.model_json_schema()
+        llm_schema_instruction = {
+            "type": "object",
+            "properties": schema.get("properties", {}),
+            "required": schema.get("required", [])
+        }
+        schema_str = json.dumps(llm_schema_instruction, indent=2, ensure_ascii=False)
+        instruction = (
+            "\n\nIMPORTANTE: Responda com um JSON COMPLETO seguindo o esquema abaixo. "
+            "Inclua nome de arquivo descritivo, linguagem, descrição e código funcional extenso "
+            "com comentários e boas práticas.\n"
+            f"{schema_str}\n"
+        )
+        if messages and messages[-1]["role"] == "user":
+            messages[-1]["content"] += instruction
+        else:
+            messages.append({"role": "user", "content": instruction})
+
+    def _normalize_generated_code(self, payload: Dict[str, Any], fallback_description: str) -> GeneratedCodeOutput:
+        filename = str(payload.get("filename") or "main.py").strip()
+        language = str(payload.get("language") or "Python").strip()
+        description = str(payload.get("description") or fallback_description).strip()
+        content = payload.get("content")
+        if not isinstance(content, str) or len(content.strip()) < 40:
+            raise LLMGenerationError("Código gerado foi muito curto ou inválido.")
+        try:
+            return GeneratedCodeOutput(
+                filename=filename or "main.py",
+                language=language or "Python",
+                content=content,
+                description=description or fallback_description
+            )
+        except ValidationError as ve:
+            raise LLMGenerationError(f"Código gerado não respeitou o esquema: {ve}") from ve
 
     def generate_code(self, project_name: str, client_name: str, code_description: str) -> Dict[str, Any]:
         """
@@ -40,21 +76,29 @@ class ADEXAgent:
         ]
 
         try:
-            # Passa o nome do modelo explicitamente e força json_mode
+            self._append_schema_instruction(messages)
             response_raw = self.llm_simulator.chat(
                 messages=messages,
                 model=self.model_name,
-                response_model=GeneratedCodeOutput,
                 json_mode=True
             )
-            response: GeneratedCodeOutput = cast(GeneratedCodeOutput, response_raw) # Cast para informar o Pylance
+            raw_content = response_raw.get('content') if isinstance(response_raw, dict) else None
+            if not raw_content:
+                raise LLMGenerationError("LLM não retornou conteúdo ao gerar código.")
+
+            try:
+                payload = json.loads(raw_content)
+            except json.JSONDecodeError as jde:
+                raise LLMGenerationError(f"LLM não retornou JSON válido para código: {jde}") from jde
+
+            normalized_output = self._normalize_generated_code(payload, code_description)
+
             logger.info(f"ADEXAgent: Código gerado com sucesso usando {self.model_name} para '{project_name}'.")
-            return response.model_dump() # Converte o modelo Pydantic para dicionário
+            return normalized_output.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
             logger.error(f"ADEXAgent: Falha ao gerar código com o LLM {self.model_name}. Erro: {e}")
             return {"error": str(e), "message": f"Falha na geração de código: {e}", "filename": "error.txt", "language": "text", "content": "# Erro ao gerar código", "description": ""}
         except Exception as e:
             logger.error(f"ADEXAgent: Erro inesperado ao gerar código: {e}")
             return {"error": str(e), "message": f"Erro inesperado na geração de código: {e}", "filename": "error.txt", "language": "text", "content": "# Erro inesperado", "description": ""}
-
 

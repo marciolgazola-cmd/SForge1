@@ -19,23 +19,38 @@ from streamlit_theme import apply_custom_theme, format_status, create_card # Ass
 # --- Aplicar Tema Customizado ---
 apply_custom_theme()
 
-# Forçar idioma pt-BR e habilitar spellcheck nos inputs/textarea do Streamlit
-# Este snippet é para melhorar a experiência do usuário em navegadores compatíveis.
+# Força idioma pt-BR e remove sublinhado de correção ortográfica em inputs/textarea
 components.html("""
 <script>
-    document.documentElement.lang = 'pt-BR';
-    function setPtBRSpell() {
-        document.querySelectorAll('input, textarea').forEach(function(el){
-            el.lang = 'pt-BR';
-            el.setAttribute('spellcheck', 'true');
+    const setPtBRLocale = () => {
+        document.documentElement.setAttribute('lang', 'pt-BR');
+        if (document.body) {
+            document.body.setAttribute('lang', 'pt-BR');
+        }
+        document.querySelectorAll('input, textarea').forEach((el) => {
+            el.setAttribute('lang', 'pt-BR');
+            el.setAttribute('spellcheck', 'false');
             el.setAttribute('autocapitalize', 'sentences');
+            el.setAttribute('autocomplete', 'off');
         });
-    }
-    setPtBRSpell();
-    const observer = new MutationObserver(function(){ setPtBRSpell(); });
+    };
+    setPtBRLocale();
+    const observer = new MutationObserver(setPtBRLocale);
     observer.observe(document.body, { childList: true, subtree: true });
 </script>
 """, height=0)
+
+# Ajusta o tamanho das métricas para manter consistência visual
+st.markdown("""
+<style>
+div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+    font-size: 1.4rem !important;
+}
+div[data-testid="metric-container"] [data-testid="stMetricLabel"] p {
+    font-size: 0.85rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # --- Inicializa o backend (Singleton) ---
 # A inicialização do SynapseForgeBackend (MOAI) agora lida com a conexão Ollama
@@ -137,7 +152,7 @@ def requirements_entry_page():
         with col1:
             project_name = st.text_input("🏢 Nome do Projeto *", value="", help="Ex: Sistema de Gestão de Clientes")
         with col2:
-            client_name = st.text_input("�� Nome do Cliente *", value="", help="Ex: Acme Corporation")
+            client_name = st.text_input("👤 Nome do Cliente *", value="", help="Ex: Acme Corporation")
         with col3:
             target_audience = st.text_input("🎯 Público-alvo", value="", help="Usuários principais da solução")
         
@@ -151,7 +166,7 @@ def requirements_entry_page():
         with col5:
             expected_features = st.text_area("✨ Funcionalidades Esperadas", value="", height=100, help="Lista de funcionalidades principais")
         
-        st.markdown("### �� Escopo e Restrições")
+        st.markdown("### 📋 Escopo e Restrições")
         restrictions = st.text_area("⚠️ Restrições e Requisitos (Orçamento, Prazo, Segurança, etc.)", value="", height=100, help="Limites técnicos, financeiros e temporais")
 
         submitted = st.form_submit_button("🚀 Gerar Proposta via MOAI", use_container_width=True)
@@ -224,10 +239,10 @@ def approvals_center_page():
                         st.write(proposal.scope_moai)
                     
                     with col_info[1]:
-                        st.markdown("#### ��️ Tecnologias")
+                        st.markdown("#### 🛠️ Tecnologias")
                         st.write(proposal.technologies_suggested_moai)
                         
-                        st.markdown("#### �� Estimativas")
+                        st.markdown("#### 📈 Estimativas")
                         # Exibir Valor e Prazo com fonte/tamanho consistentes aos campos do formulário
                         st.markdown(f"**Valor:** <span style='font-size:16px'>{format_currency(proposal.estimated_value_moai)}</span>", unsafe_allow_html=True)
                         st.markdown(f"**Prazo:** <span style='font-size:16px'>{proposal.estimated_time_moai}</span>", unsafe_allow_html=True)
@@ -244,7 +259,7 @@ def approvals_center_page():
                     if edit_key not in st.session_state:
                         st.session_state[edit_key] = False
 
-                    col_actions = st.columns(4)
+                    col_actions = st.columns(5)
                     with col_actions[0]:
                         if st.button("✅ Aprovar", key=f"approve_{proposal.id}", use_container_width=True):
                             with st.spinner(f"Aprovando proposta '{proposal.title}'..."):
@@ -274,6 +289,15 @@ def approvals_center_page():
                         if st.button("📋 Visualizar Completo", key=f"full_{proposal.id}", use_container_width=True):
                             st.session_state[view_full_key] = not st.session_state.get(view_full_key, False)
                             # Não precisa de rerun aqui, o conteúdo pode ser expandido/colapsado abaixo
+                    with col_actions[4]:
+                        if st.button("🗑️ Excluir", key=f"delete_{proposal.id}", use_container_width=True):
+                            with st.spinner(f"Removendo proposta '{proposal.title}' e registros associados..."):
+                                deleted = backend.delete_proposal(proposal.id)
+                            if deleted:
+                                st.success(f"🗑️ Proposta '{proposal.title}' removida com sucesso.")
+                            else:
+                                st.error("❌ Não foi possível remover a proposta. Verifique os logs.")
+                            st.rerun()
                     
                     # Exibe o formulário de edição se st.session_state[edit_key] for True
                     if st.session_state[edit_key]:
@@ -362,8 +386,16 @@ def approvals_center_page():
                         st.write(proposal.scope_moai)
                         st.markdown("#### 🛠️ Tecnologias")
                         st.write(proposal.technologies_suggested_moai)
-                        st.markdown("#### �� Termos e Condições")
+                        st.markdown("#### 📋 Termos e Condições")
                         st.write(proposal.terms_conditions_moai)
+                    if st.button("🗑️ Excluir Proposta/Projeto", key=f"delete_approved_{proposal.id}", use_container_width=True):
+                        with st.spinner(f"Removendo proposta '{proposal.title}' e dados relacionados..."):
+                            deleted = backend.delete_proposal(proposal.id)
+                        if deleted:
+                            st.success("🗑️ Proposta e registros derivados removidos.")
+                        else:
+                            st.error("❌ Falha ao remover esta proposta.")
+                        st.rerun()
         else:
             st.info("📭 Nenhuma proposta aprovada ainda.")
     
@@ -373,6 +405,14 @@ def approvals_center_page():
                 with st.expander(f"❌ {proposal.title} (ID: {proposal.id[:8]}...)", expanded=False):
                     st.error(f"Rejeitado em: {proposal.submitted_at.strftime('%d/%m/%Y %H:%M')}")
                     st.write(proposal.description)
+                    if st.button("🗑️ Excluir (Rejeitada)", key=f"delete_rejected_{proposal.id}", use_container_width=True):
+                        with st.spinner(f"Removendo proposta rejeitada '{proposal.title}'..."):
+                            deleted = backend.delete_proposal(proposal.id)
+                        if deleted:
+                            st.success("🗑️ Proposta rejeitada removida.")
+                        else:
+                            st.error("❌ Falha ao remover proposta rejeitada.")
+                        st.rerun()
         else:
             st.info("📭 Nenhuma proposta rejeitada.")
 
@@ -437,7 +477,7 @@ def project_timeline_page():
 
 def detailed_reports_page():
     """Renderiza a página de Relatórios Detalhados."""
-    st.header("�� Relatórios Detalhados")
+    st.header("📊 Relatórios Detalhados")
     st.markdown("""
     Acesse relatórios completos de desempenho, qualidade, segurança e aspectos comerciais da Synapse Forge.
     """)
@@ -831,7 +871,7 @@ def project_management_page():
             # Header com informações principais do projeto
             col_header1, col_header2, col_header3, col_header4 = st.columns(4)
             with col_header1:
-                st.metric("�� Progresso", f"{project.progress}%")
+                st.metric("📊 Progresso", f"{project.progress}%")
             with col_header2:
                 status_emoji = {"active": "🟢", "on hold": "🟡", "completed": "✅", "cancelled": "⛔"}.get(project.status, "❓")
                 st.metric("Status", f"{status_emoji} {project.status.title()}")
@@ -884,12 +924,12 @@ def project_management_page():
                     st.markdown("### 🔍 Entendimento do Problema")
                     st.write(proposal.problem_understanding_moai)
                     
-                    st.markdown("### �� Solução Proposta")
+                    st.markdown("### 💡 Solução Proposta")
                     st.write(proposal.solution_proposal_moai)
                     
                     col_tech1, col_tech2 = st.columns(2)
                     with col_tech1:
-                        st.markdown("### �� Escopo")
+                        st.markdown("### 📊 Escopo")
                         st.write(proposal.scope_moai)
                     with col_tech2:
                         st.markdown("### 🛠️ Tecnologias")
@@ -903,7 +943,7 @@ def project_management_page():
             with tab_edit:
                 st.subheader(f"✏️ Editar Projeto: {project.name}")
                 
-                st.markdown("### �� Dados Básicos do Projeto")
+                st.markdown("### 📋 Dados Básicos do Projeto")
                 with st.form(key=f"form_edit_project_{project.id}"):
                     col_edit1, col_edit2 = st.columns(2)
                     with col_edit1:
@@ -986,6 +1026,17 @@ def project_management_page():
             
             if proposal:
                 st.markdown("--- \n _O MOAI garante que todas as revisões sejam documentadas e orquestradas._")
+            
+            st.markdown("---")
+            st.warning("⚠️ Esta ação remove o projeto selecionado, a proposta vinculada e todos os artefatos gerados (código, relatórios, documentação, monitoramento e logs).")
+            if st.button("🗑️ Excluir Projeto e Proposta", key=f"delete_project_{project.id}", use_container_width=True):
+                with st.spinner(f"Removendo projeto '{project.name}' e registros associados..."):
+                    deleted = backend.delete_proposal(project.proposal_id)
+                if deleted:
+                    st.success("🗑️ Projeto removido. Recarregando dados...")
+                    st.rerun()
+                else:
+                    st.error("❌ Falha ao remover o projeto. Verifique os logs para detalhes.")
         else:
             st.info("🎉 Nenhum projeto encontrado.")
     st.markdown("---")
@@ -1019,7 +1070,7 @@ with st.sidebar:
     if st.button("🌟 Dashboard Executivo", key="btn_dashboard", use_container_width=True):
         navigate_to("dashboard")
     
-    if st.button("�� Entrada de Requisitos", key="btn_requisitos", use_container_width=True):
+    if st.button("📝 Entrada de Requisitos", key="btn_requisitos", use_container_width=True):
         navigate_to("requisitos")
     
     pending_proposals_count = backend.get_pending_proposals() # Exibe a contagem de propostas pendentes
