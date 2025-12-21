@@ -1,11 +1,11 @@
-# ado_agent.py
+# agent_ado.py
 import logging
 import json
 import uuid
 from typing import Dict, Any
 from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,11 @@ class DocumentationOutput(BaseModel):
     version: str = Field(description="Versão da documentação.")
     content: str = Field(description="O conteúdo completo da documentação em formato Markdown.")
 
-class ADOAgent:
+class AgentADO:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('ADO') # Obtém o modelo para ADO
-        logger.info(f"ADOAgent inicializado com modelo {self.model_name} e pronto para documentar projetos.")
+        logger.info(f"AgentADO inicializado com modelo {self.model_name} e pronto para documentar projetos.")
 
     def _append_schema_instruction(self, messages: list[Dict[str, str]]):
         schema = DocumentationOutput.model_json_schema()
@@ -127,10 +127,10 @@ class ADOAgent:
             except ValidationError as ve:
                 raise LLMGenerationError(f"Dados normalizados não correspondem ao esquema de documentação: {ve}") from ve
 
-            logger.info(f"ADOAgent: Documentação '{doc_type}' gerada com sucesso usando {self.model_name} para '{project_name}'.")
+            logger.info(f"AgentADO: Documentação '{doc_type}' gerada com sucesso usando {self.model_name} para '{project_name}'.")
             return response_model.model_dump()
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"ADOAgent: Falha ao gerar documentação com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentADO: Falha ao gerar documentação com o LLM {self.model_name}. Erro: {e}")
             # Retorno de fallback consistente com a estrutura esperada
             return {
                 "filename": f"fallback_doc_{project_id[:8]}.md",
@@ -139,7 +139,7 @@ class ADOAgent:
                 "content": f"# Erro na Geração da Documentação\n\nOcorreu um erro ao gerar a documentação com o LLM: {e}\n\nPor favor, verifique a conexão com o LLM ou o modelo configurado."
             }
         except Exception as e:
-            logger.error(f"ADOAgent: Erro inesperado ao gerar documentação: {e}")
+            logger.error(f"AgentADO: Erro inesperado ao gerar documentação: {e}")
             return {
                 "filename": f"fallback_doc_unexpected_error_{project_id[:8]}.md",
                 "document_type": doc_type,

@@ -1,10 +1,10 @@
-# agp_agent.py
+# agent_agp.py
 import logging
 import json # Adicionado
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,11 @@ class AGPEstimateOutput(BaseModel):
     milestones: List[Dict[str, str]] = Field(description="Principais marcos do projeto com prazos estimados.")
     resource_needs: List[str] = Field(description="Recursos humanos ou técnicos necessários.")
 
-class AGPAgent:
+class AgentAGP:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('AGP') # Obtém o modelo para AGP
-        logger.info(f"AGPAgent inicializado com modelo {self.model_name} e pronto para gerenciar projetos.")
+        logger.info(f"AgentAGP inicializado com modelo {self.model_name} e pronto para gerenciar projetos.")
 
     def _append_schema_instruction(self, messages: list[Dict[str, str]]):
         schema = AGPEstimateOutput.model_json_schema()
@@ -64,7 +64,7 @@ class AGPAgent:
                         "timeline": "Prazo não especificado"
                     })
         else:
-            logger.warning("AGPAgent: 'milestones' retornado em formato inesperado. Aplicando fallback.")
+            logger.warning("AgentAGP: 'milestones' retornado em formato inesperado. Aplicando fallback.")
         if not normalized:
             normalized.append({"name": "Planejamento inicial", "timeline": "A definir"})
         return normalized
@@ -90,7 +90,7 @@ class AGPAgent:
             try:
                 estimated_cost = float(cleaned)
             except ValueError:
-                logger.warning(f"AGPAgent: Não foi possível converter estimated_cost '{estimated_cost_raw}'. Usando 0.0.")
+                logger.warning(f"AgentAGP: Não foi possível converter estimated_cost '{estimated_cost_raw}'. Usando 0.0.")
                 estimated_cost = 0.0
 
         milestones = self._normalize_milestones(payload.get("milestones"))
@@ -104,7 +104,7 @@ class AGPAgent:
                 resource_needs=resource_needs or ["Equipe a definir"]
             )
         except ValidationError as ve:
-            logger.error(f"AGPAgent: Falha ao validar dados normalizados: {ve}")
+            logger.error(f"AgentAGP: Falha ao validar dados normalizados: {ve}")
             raise LLMGenerationError(f"Dados normalizados inválidos para estimativa: {ve}") from ve
 
     def estimate_project(self, project_name: str, requirements: Dict[str, Any], solution_design: Dict[str, Any]) -> Dict[str, Any]:
@@ -148,11 +148,11 @@ class AGPAgent:
 
             normalized_output = self._normalize_estimate_payload(payload)
 
-            logger.info(f"AGPAgent: Estimativa de projeto gerada com sucesso usando {self.model_name}.")
+            logger.info(f"AgentAGP: Estimativa de projeto gerada com sucesso usando {self.model_name}.")
             return normalized_output.model_dump()
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"AGPAgent: Falha ao estimar projeto com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentAGP: Falha ao estimar projeto com o LLM {self.model_name}. Erro: {e}")
             return {"error": str(e), "message": f"Falha na estimativa de projeto: {e}", "estimated_time": "(Erro)", "estimated_cost": 0.0}
         except Exception as e:
-            logger.error(f"AGPAgent: Erro inesperado ao estimar projeto: {e}")
+            logger.error(f"AgentAGP: Erro inesperado ao estimar projeto: {e}")
             return {"error": str(e), "message": f"Erro inesperado na estimativa de projeto: {e}", "estimated_time": "(Erro inesperado)", "estimated_cost": 0.0}

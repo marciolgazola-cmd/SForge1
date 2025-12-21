@@ -1,8 +1,12 @@
 # llm_simulator.py
-import ollama
-import logging
+import concurrent.futures
 import json
+import logging
+import os
+import time
 from typing import List, Dict, Any, Optional, Union
+
+import ollama
 from pydantic import BaseModel, ValidationError
 
 # Configure logging for this module
@@ -23,37 +27,64 @@ class LLMSimulator:
     Simula e gerencia a conexão com um servidor Ollama para interações com LLMs.
     Encapsula a lógica de conexão, verificação de disponibilidade e chamada dos modelos.
     """
-    def __init__(self, host: str = 'http://localhost:11434'):
+    def __init__(self, host: str = 'http://localhost:11434', eager_init: bool = False):
         self.host = host
         self.client: Optional[ollama.Client] = None
         self._is_available = False # Internal flag for connection status
-        
-        # Initialize client immediately upon instantiation
-        self._initialize_client()
+        self._last_check_at = 0.0
+        self._check_timeout_seconds = float(os.getenv("OLLAMA_CHECK_TIMEOUT", "2"))
+        self._chat_check_timeout_seconds = float(os.getenv("OLLAMA_CHAT_CHECK_TIMEOUT", "10"))
+        self._check_cooldown_seconds = float(os.getenv("OLLAMA_CHECK_COOLDOWN", "5"))
 
-    def _initialize_client(self):
+        if eager_init:
+            self._initialize_client(timeout=self._check_timeout_seconds)
+
+    def _run_with_timeout(self, fn, timeout_seconds: Optional[float]):
+        if not timeout_seconds or timeout_seconds <= 0:
+            return fn()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(fn)
+            return future.result(timeout=timeout_seconds)
+
+    def _initialize_client(self, timeout: Optional[float] = None) -> bool:
         """Tenta inicializar o cliente Ollama e verificar a conexão."""
         try:
-            # Create a temporary client to test the connection before assigning it
-            temp_client = ollama.Client(host=self.host)
-            # Attempt a light operation (e.g., list models) to verify connection.
-            # If this fails (e.g., Ollama server not running), an exception will be caught.
-            temp_client.list() 
-            self.client = temp_client # Only assign if the test passes
+            def _connect_and_list():
+                temp_client = ollama.Client(host=self.host)
+                temp_client.list()
+                return temp_client
+
+            temp_client = self._run_with_timeout(_connect_and_list, timeout)
+            self.client = temp_client
             self._is_available = True
             logger.info(f"LLMSimulator: Conectado com sucesso ao Ollama em {self.host}")
+            return True
+        except concurrent.futures.TimeoutError:
+            self.client = None
+            self._is_available = False
+            logger.warning("LLMSimulator: Timeout ao conectar no Ollama.")
+            return False
         except Exception as e:
             # If any part of the initialization/connection test fails, ensure client is None
             # and status is unavailable.
             self.client = None 
             self._is_available = False
             logger.error(f"LLMSimulator: Falha ao conectar ao Ollama em {self.host}. Erro: {e}")
+            return False
 
-    def is_available(self) -> bool:
+    def is_available(self, timeout: Optional[float] = None) -> bool:
         """
         Verifica se o cliente LLM está atualmente disponível e funcional.
         Realiza uma verificação dinâmica para confirmar a conexão ativa.
         """
+        now = time.time()
+        if now - self._last_check_at < self._check_cooldown_seconds:
+            return self._is_available
+        self._last_check_at = now
+
+        if self.client is None:
+            return self._initialize_client(timeout=timeout or self._check_timeout_seconds)
+
         if self.client is None:
             # If the client was never successfully initialized or explicitly set to None,
             # it's not available.
@@ -64,9 +95,14 @@ class LLMSimulator:
             # Attempt a lightweight operation to confirm the connection is active.
             # This handles cases where the Ollama server might have gone down after
             # initial successful connection.
-            self.client.list() 
+            self._run_with_timeout(self.client.list, timeout or self._check_timeout_seconds)
             self._is_available = True # Confirm the internal state is consistent
             return True
+        except concurrent.futures.TimeoutError:
+            logger.warning("LLMSimulator: Timeout ao verificar Ollama.")
+            self.client = None
+            self._is_available = False
+            return False
         except Exception as e:
             # If the dynamic check fails, log it and update the status.
             logger.warning(f"LLMSimulator: Cliente Ollama ficou indisponível ou conexão falhou durante verificação dinâmica: {e}")
@@ -81,7 +117,7 @@ class LLMSimulator:
         Se json_mode é True, solicita saída JSON ao LLM.
         """
         # First, check availability. This will raise LLMConnectionError if not available.
-        if not self.is_available(): 
+        if not self.is_available(timeout=self._chat_check_timeout_seconds):
             raise LLMConnectionError("LLM não está disponível. O servidor Ollama pode estar inativo ou mal configurado.")
 
         # CRÍTICO: Segunda verificação explícita. Após is_available() retornar True, self.client DEVE ser um objeto.

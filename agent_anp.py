@@ -1,15 +1,15 @@
-# anp_agent.py
+# agent_anp.py
 import logging
 import json
 from typing import Dict, Any
 from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 # Importa os agentes auxiliares para chamar suas funções
-from ara_agent import ARAAgent, ARAOutput
-from aad_agent import AADAgent, AADSolutionOutput
-from agp_agent import AGPAgent, AGPEstimateOutput
+from agent_ara import AgentARA, ARAOutput
+from agent_aad import AgentAAD, AADSolutionOutput
+from agent_agp import AgentAGP, AGPEstimateOutput
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +25,14 @@ class ProposalContentOutput(BaseModel):
     estimated_time_moai: str = Field(description="Prazo estimado de entrega.")
     terms_conditions_moai: str = Field(description="Termos e condições gerais.")
 
-class ANPAgent:
-    def __init__(self, llm_simulator: LLMSimulator, ara_agent: ARAAgent, aad_agent: AADAgent, agp_agent: AGPAgent):
+class AgentANP:
+    def __init__(self, llm_simulator: LLMSimulator, ara_agent: AgentARA, aad_agent: AgentAAD, agp_agent: AgentAGP):
         self.llm_simulator = llm_simulator
         self.ara_agent = ara_agent
         self.aad_agent = aad_agent
         self.agp_agent = agp_agent
         self.model_name = get_agent_model('ANP') # Obtém o modelo para ANP
-        logger.info(f"ANPAgent inicializado com modelo {self.model_name} e pronto para gerar propostas comerciais.")
+        logger.info(f"AgentANP inicializado com modelo {self.model_name} e pronto para gerar propostas comerciais.")
 
     def _append_schema_instruction(self, messages: list[Dict[str, str]]):
         schema = ProposalContentOutput.model_json_schema()
@@ -77,7 +77,7 @@ class ANPAgent:
         try:
             return float(cleaned)
         except ValueError:
-            logger.warning(f"ANPAgent: Não foi possível converter estimated_value '{raw_value}'. Usando 0.0.")
+            logger.warning(f"AgentANP: Não foi possível converter estimated_value '{raw_value}'. Usando 0.0.")
             return 0.0
 
     def _normalize_proposal_payload(self, payload: Dict[str, Any], req_data: Dict[str, Any]) -> ProposalContentOutput:
@@ -95,7 +95,7 @@ class ANPAgent:
         try:
             return ProposalContentOutput(**normalized)
         except ValidationError as ve:
-            logger.error(f"ANPAgent: Dados normalizados não correspondem ao esquema: {ve}")
+            logger.error(f"AgentANP: Dados normalizados não correspondem ao esquema: {ve}")
             raise LLMGenerationError(f"Dados normalizados inválidos para proposta: {ve}") from ve
 
     def generate_proposal_content(self, req_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -162,11 +162,11 @@ class ANPAgent:
 
             proposal_output = self._normalize_proposal_payload(payload, req_data)
 
-            logger.info(f"ANPAgent: Proposta comercial gerada com sucesso usando {self.model_name}.")
+            logger.info(f"AgentANP: Proposta comercial gerada com sucesso usando {self.model_name}.")
             return proposal_output.model_dump() # Converte o modelo Pydantic para dicionário
 
         except (LLMConnectionError, LLMGenerationError, ValueError) as e:
-            logger.error(f"ANPAgent: Falha ao gerar proposta comercial com o LLM {self.model_name} ou agente auxiliar. Erro: {e}")
+            logger.error(f"AgentANP: Falha ao gerar proposta comercial com o LLM {self.model_name} ou agente auxiliar. Erro: {e}")
             # Retorna um dicionário com informações de erro e campos padrão para que o MOAI possa processar
             return {
                 "error": str(e),
@@ -182,7 +182,7 @@ class ANPAgent:
                 "terms_conditions_moai": ""
             }
         except Exception as e:
-            logger.error(f"ANPAgent: Erro inesperado ao gerar proposta comercial: {e}")
+            logger.error(f"AgentANP: Erro inesperado ao gerar proposta comercial: {e}")
             return {
                 "error": str(e),
                 "message": f"Erro inesperado ao gerar proposta comercial: {e}.",
@@ -205,5 +205,5 @@ class ANPAgent:
         # Em um cenário real, o LLM poderia reformatar ou enriquecer a proposta.
         final_proposal = proposal_data.copy()
         final_proposal['description'] += "\n\nEsta é a versão final da proposta aprovada, pronta para execução."
-        logger.info(f"ANPAgent: Versão final da proposta aprovada gerada para {proposal_data.get('title', 'N/A')}.")
+        logger.info(f"AgentANP: Versão final da proposta aprovada gerada para {proposal_data.get('title', 'N/A')}.")
         return final_proposal

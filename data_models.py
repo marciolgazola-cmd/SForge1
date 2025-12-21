@@ -89,3 +89,15 @@ class MOAILog(BaseModel):
     project_id: Optional[str] = None
     agent_id: Optional[str] = None
     status: str
+
+class TestWorkspace(BaseModel):
+    id: str
+    project_id: str
+    project_name: str
+    code_id: str
+    filename: str
+    language: str
+    description: Optional[str] = None
+    workspace_path: str
+    created_at: datetime.datetime
+    last_used_at: Optional[datetime.datetime] = None

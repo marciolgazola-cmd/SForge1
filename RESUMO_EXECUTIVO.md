@@ -74,7 +74,7 @@ st.text_input("Nome do Projeto", value="")
 | Arquivo | Mudanças | Linhas |
 |---------|----------|--------|
 | `cognitolink.py` | Reformatação UI + validação | ~200 |
-| `anp_agent.py` | Conversão None → "" | 20 |
+| `agent_anp.py` | Conversão None → "" | 20 |
 | `MOAI.py` | Fallback operator | 15 |
 | `streamlit_theme.py` | NOVO - Tema customizado | ~400 |
 | `style.css` | Melhorias visuais | ~200 |

@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import logging
 
 # Importa os modelos do novo arquivo data_models.py
-from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog
+from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog, TestWorkspace
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -141,6 +141,24 @@ class DatabaseManager:
                 project_id TEXT,
                 agent_id TEXT,
                 status TEXT
+            )
+        """)
+
+        # Tabela de Workspaces de Teste
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS test_workspaces (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                project_name TEXT,
+                code_id TEXT,
+                filename TEXT,
+                language TEXT,
+                description TEXT,
+                workspace_path TEXT NOT NULL,
+                created_at TIMESTAMP,
+                last_used_at TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects (id),
+                FOREIGN KEY (code_id) REFERENCES generated_code (id)
             )
         """)
 
@@ -445,6 +463,16 @@ class DatabaseManager:
         conn.close()
         return [GeneratedCode(**dict(row)) for row in rows]
 
+    def get_generated_code_by_id(self, code_id: str) -> Optional[GeneratedCode]:
+        conn = self._connect()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM generated_code WHERE id = ?", (code_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return GeneratedCode(**dict(row))
+        return None
+
     def delete_generated_code_by_project(self, project_id: str) -> bool:
         conn = self._connect()
         cursor = conn.cursor()
@@ -457,6 +485,86 @@ class DatabaseManager:
             logging.error(f"Erro ao excluir código gerado para projeto {project_id[:8]}...: {e}")
             conn.rollback()
             return False
+        finally:
+            conn.close()
+
+    def add_test_workspace(self, workspace_data: Dict[str, Any]):
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO test_workspaces (id, project_id, project_name, code_id, filename, language, description,
+                                             workspace_path, created_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                workspace_data["id"],
+                workspace_data["project_id"],
+                workspace_data.get("project_name"),
+                workspace_data.get("code_id"),
+                workspace_data.get("filename"),
+                workspace_data.get("language"),
+                workspace_data.get("description"),
+                workspace_data["workspace_path"],
+                workspace_data.get("created_at"),
+                workspace_data.get("last_used_at"),
+            ))
+            conn.commit()
+        except sqlite3.Error as e:
+            logging.error(f"Erro ao registrar workspace de teste: {e}")
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def get_test_workspaces(self, project_id: Optional[str] = None) -> List[TestWorkspace]:
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            if project_id:
+                cursor.execute("SELECT * FROM test_workspaces WHERE project_id = ? ORDER BY created_at DESC", (project_id,))
+            else:
+                cursor.execute("SELECT * FROM test_workspaces ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            return [TestWorkspace(**dict(row)) for row in rows]
+        finally:
+            conn.close()
+
+    def get_test_workspace_by_id(self, workspace_id: str) -> Optional[TestWorkspace]:
+        conn = self._connect()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM test_workspaces WHERE id = ?", (workspace_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return TestWorkspace(**dict(row))
+        return None
+
+    def delete_test_workspace(self, workspace_id: str) -> bool:
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM test_workspaces WHERE id = ?", (workspace_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logging.error(f"Erro ao excluir workspace {workspace_id}: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
+    def update_test_workspace_usage(self, workspace_id: str):
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE test_workspaces SET last_used_at = ? WHERE id = ?",
+                (datetime.datetime.now(), workspace_id)
+            )
+            conn.commit()
+        except sqlite3.Error as e:
+            logging.error(f"Erro ao atualizar uso do workspace {workspace_id}: {e}")
+            conn.rollback()
         finally:
             conn.close()
 

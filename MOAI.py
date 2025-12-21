@@ -8,7 +8,7 @@ import time
 from typing import Dict, Any, List, Optional, Union, cast # Adicionado 'cast'
 
 # Importa os modelos do novo arquivo data_models.py
-from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog
+from data_models import Proposal, Project, GeneratedCode, QualityReport, SecurityReport, Documentation, MonitoringSummary, ChatMessage, MOAILog, TestWorkspace
 
 # Importa DatabaseManager
 from database_manager import DatabaseManager
@@ -17,19 +17,20 @@ from database_manager import DatabaseManager
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
 
 # Importa o mapeamento de modelos para agentes
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 # Importações dos agentes e seus modelos de saída (para type hinting e conversão)
-from ara_agent import ARAAgent, ARAOutput
-from aad_agent import AADAgent, AADSolutionOutput
-from agp_agent import AGPAgent, AGPEstimateOutput
-from anp_agent import ANPAgent, ProposalContentOutput
-from adex_agent import ADEXAgent, GeneratedCodeOutput
-from aqt_agent import AQTAgent, QualityReportOutput
-from ase_agent import ASEAgent, SecurityReportOutput
-from ado_agent import ADOAgent, DocumentationOutput
-from ams_agent import AMSAgent, MonitoringSummaryOutput
-from aid_agent import AIDAgent, InfraStatusOutput
+from agent_ara import AgentARA, ARAOutput
+from agent_aad import AgentAAD, AADSolutionOutput
+from agent_agp import AgentAGP, AGPEstimateOutput
+from agent_anp import AgentANP, ProposalContentOutput
+from agent_adex import AgentADEX, GeneratedCodeOutput
+from agent_aqt import AgentAQT, QualityReportOutput
+from agent_ase import AgentASE, SecurityReportOutput
+from agent_ado import AgentADO, DocumentationOutput
+from agent_ams import AgentAMS, MonitoringSummaryOutput
+from agent_aid import AgentAID, InfraStatusOutput
+from test_workspace_manager import TestWorkspaceManager
 
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -47,22 +48,23 @@ class SynapseForgeBackend:
     def __init__(self):
         if not hasattr(self, '_initialized'): # Garante que __init__ só roda uma vez para o Singleton
             self.db_manager = DatabaseManager('synapse_forge.db')
-            self.llm_simulator = LLMSimulator() # Inicializa o LLM Simulator
+            self.llm_simulator = LLMSimulator(eager_init=False) # Inicializa o LLM Simulator
+            self.test_workspace_manager = TestWorkspaceManager()
 
             # Inicializa os Agentes
             # Agentes base que não dependem de outros para inicialização
-            self.ara_agent = ARAAgent(self.llm_simulator)
-            self.aad_agent = AADAgent(self.llm_simulator)
-            self.agp_agent = AGPAgent(self.llm_simulator)
-            self.adex_agent = ADEXAgent(self.llm_simulator)
-            self.aqt_agent = AQTAgent(self.llm_simulator)
-            self.ase_agent = ASEAgent(self.llm_simulator)
-            self.ado_agent = ADOAgent(self.llm_simulator)
-            self.ams_agent = AMSAgent(self.llm_simulator)
-            self.aid_agent = AIDAgent(self.llm_simulator)
+            self.ara_agent = AgentARA(self.llm_simulator)
+            self.aad_agent = AgentAAD(self.llm_simulator)
+            self.agp_agent = AgentAGP(self.llm_simulator)
+            self.adex_agent = AgentADEX(self.llm_simulator)
+            self.aqt_agent = AgentAQT(self.llm_simulator)
+            self.ase_agent = AgentASE(self.llm_simulator)
+            self.ado_agent = AgentADO(self.llm_simulator)
+            self.ams_agent = AgentAMS(self.llm_simulator)
+            self.aid_agent = AgentAID(self.llm_simulator)
 
             # ANPAgent que depende de outros agentes
-            self.anp_agent = ANPAgent(self.llm_simulator, self.ara_agent, self.aad_agent, self.agp_agent)
+            self.anp_agent = AgentANP(self.llm_simulator, self.ara_agent, self.aad_agent, self.agp_agent)
             
             self._initialized = True
             logger.info("SynapseForgeBackend (MOAI) inicializado com sucesso e orquestrando agentes.")
@@ -548,7 +550,7 @@ class SynapseForgeBackend:
     def get_agents_in_activity(self) -> List[Dict[str, Any]]:
         active_agents = []
         
-        llm_available = self.llm_simulator.is_available() # Usa o método is_available do LLMSimulator
+        llm_available = self.llm_simulator.is_available(timeout=1) # Usa o método is_available do LLMSimulator
         
         if llm_available:
             # Lista de todos os agentes e seus modelos
@@ -680,6 +682,105 @@ class SynapseForgeBackend:
 
     def get_generated_code_for_project(self, project_id: str) -> List[GeneratedCode]:
         return self.db_manager.get_generated_code_for_project(project_id)
+
+    def get_test_workspaces(self, project_id: Optional[str] = None) -> List[TestWorkspace]:
+        return self.db_manager.get_test_workspaces(project_id)
+
+    def prepare_test_workspace(
+        self,
+        project_id: str,
+        code_id: str,
+        target_os: Optional[str] = None,
+        build_executable: bool = False,
+    ) -> Dict[str, Any]:
+        project = self.db_manager.get_project_by_id(project_id)
+        if not project:
+            return {"success": False, "message": "Projeto não encontrado."}
+
+        generated_code = self.db_manager.get_generated_code_by_id(code_id)
+        if not generated_code:
+            return {"success": False, "message": "Código selecionado não encontrado."}
+
+        try:
+            workspace_id = str(uuid.uuid4())
+            workspace_fs = self.test_workspace_manager.create_workspace(
+                workspace_id=workspace_id,
+                filename=generated_code.filename,
+                content=generated_code.content,
+                language=generated_code.language,
+                description=generated_code.description,
+            )
+
+            workspace_record = TestWorkspace(
+                id=workspace_id,
+                project_id=project.id,
+                project_name=project.name,
+                code_id=generated_code.id,
+                filename=generated_code.filename,
+                language=generated_code.language,
+                description=generated_code.description,
+                workspace_path=workspace_fs["workspace_path"],
+                created_at=datetime.datetime.now(),
+                last_used_at=None,
+            )
+            self.db_manager.add_test_workspace(workspace_record.dict())
+            self._add_moai_log(
+                "TEST_WORKSPACE_CREATED",
+                f"Workspace {workspace_id[:8]}... criado para o arquivo {generated_code.filename}.",
+                project_id=project_id,
+                agent_id="ADE-X",
+            )
+
+            commands = {
+                "cd": f"cd {workspace_record.workspace_path}",
+                "activate": f"source {workspace_record.workspace_path}/.venv/bin/activate" if workspace_fs.get("venv_path") else "",
+                "install": "pip install -r requirements.txt" if workspace_fs.get("requirements_path") else "",
+                "run": f"python src/{workspace_record.filename}" if generated_code.language.lower() == "python" else "",
+            }
+
+            executable_info = {}
+            if build_executable and generated_code.language.lower() == "python":
+                try:
+                    executable_info = self.test_workspace_manager.prepare_executable(
+                        workspace_path=workspace_fs["workspace_path"],
+                        filename=generated_code.filename,
+                        target_os=target_os or "",
+                    )
+                except Exception as e:
+                    executable_info = {
+                        "success": False,
+                        "built": False,
+                        "message": f"Erro ao gerar executavel: {e}",
+                    }
+
+            return {
+                "success": True,
+                "workspace": workspace_record,
+                "instructions": workspace_fs["instructions"],
+                "commands": commands,
+                "executable": executable_info,
+            }
+        except Exception as e:
+            logger.error(f"Falha ao criar workspace de teste: {e}")
+            return {"success": False, "message": f"Erro ao criar workspace: {e}"}
+
+    def delete_test_workspace(self, workspace_id: str) -> Dict[str, Any]:
+        workspace = self.db_manager.get_test_workspace_by_id(workspace_id)
+        if not workspace:
+            return {"success": False, "message": "Workspace não encontrado."}
+
+        try:
+            self.test_workspace_manager.delete_workspace(workspace.workspace_path)
+            self.db_manager.delete_test_workspace(workspace_id)
+            self._add_moai_log(
+                "TEST_WORKSPACE_DELETED",
+                f"Workspace {workspace_id[:8]}... removido.",
+                project_id=workspace.project_id,
+            )
+            return {"success": True}
+        except Exception as e:
+            logger.error(f"Falha ao remover workspace {workspace_id}: {e}")
+            return {"success": False, "message": f"Erro ao remover workspace: {e}"}
 
     def generate_code_for_project(self, project_id: str, filename: str, language: str, description: str) -> Dict[str, Any]:
         project = self.db_manager.get_project_by_id(project_id)

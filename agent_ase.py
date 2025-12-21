@@ -1,11 +1,11 @@
-# ase_agent.py
+# agent_ase.py
 import logging
 import json
 import random
 from typing import Dict, Any, List, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ class SecurityReportOutput(BaseModel):
     security_score: int = Field(description="Pontuação de segurança (0-100).")
     recommendations: List[str] = Field(description="Recomendações para melhorar a segurança.")
 
-class ASEAgent:
+class AgentASE:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('ASE') # Obtém o modelo para ASE
-        logger.info(f"ASEAgent inicializado com modelo {self.model_name} e pronto para auditar segurança.")
+        logger.info(f"AgentASE inicializado com modelo {self.model_name} e pronto para auditar segurança.")
 
     def generate_security_report(self, project_id: str, project_name: str, code_snippets: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -66,10 +66,10 @@ class ASEAgent:
                 json_mode=True
             )
             response: SecurityReportOutput = cast(SecurityReportOutput, response_raw) # Cast para informar o Pylance
-            logger.info(f"ASEAgent: Relatório de segurança gerado com sucesso usando {self.model_name} para '{project_name}'.")
+            logger.info(f"AgentASE: Relatório de segurança gerado com sucesso usando {self.model_name} para '{project_name}'.")
             return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"ASEAgent: Falha ao gerar relatório de segurança com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentASE: Falha ao gerar relatório de segurança com o LLM {self.model_name}. Erro: {e}")
             logger.warning(f"Erro ao gerar relatório de segurança com o LLM: {e}. Gerando relatório padrão.")
             # Retorno de fallback consistente com a estrutura esperada
             return {
@@ -81,7 +81,7 @@ class ASEAgent:
                 "recommendations": ["Verificar a conexão com o LLM e se o modelo está disponível."]
             }
         except Exception as e:
-            logger.error(f"ASEAgent: Erro inesperado ao gerar relatório de segurança: {e}")
+            logger.error(f"AgentASE: Erro inesperado ao gerar relatório de segurança: {e}")
             return {
                 "overall_security_status": "Error",
                 "vulnerabilities_found": 0,

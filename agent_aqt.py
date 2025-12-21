@@ -1,11 +1,11 @@
-# aqt_agent.py
+# agent_aqt.py
 import logging
 import json
 import random
 from typing import Dict, Any, List, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ class QualityReportOutput(BaseModel):
     test_results: List[Dict[str, str]] = Field(description="Detalhes de cada teste (nome, status, mensagem).")
     recommendations: List[str] = Field(description="Recomendações para melhoria da qualidade.")
 
-class AQTAgent:
+class AgentAQT:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('AQT') # Obtém o modelo para AQT
-        logger.info(f"AQTAgent inicializado com modelo {self.model_name} e pronto para auditar qualidade.")
+        logger.info(f"AgentAQT inicializado com modelo {self.model_name} e pronto para auditar qualidade.")
 
     def generate_quality_report(self, project_id: str, project_name: str, code_snippets: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -66,10 +66,10 @@ class AQTAgent:
                 json_mode=True
             )
             response: QualityReportOutput = cast(QualityReportOutput, response_raw) # Cast para informar o Pylance
-            logger.info(f"AQTAgent: Relatório de qualidade gerado com sucesso usando {self.model_name} para '{project_name}'.")
+            logger.info(f"AgentAQT: Relatório de qualidade gerado com sucesso usando {self.model_name} para '{project_name}'.")
             return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"AQTAgent: Falha ao gerar relatório de qualidade com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentAQT: Falha ao gerar relatório de qualidade com o LLM {self.model_name}. Erro: {e}")
             # Retorno de fallback consistente com a estrutura esperada
             return {
                 "overall_status": "Failed",
@@ -80,7 +80,7 @@ class AQTAgent:
                 "recommendations": ["Verificar conexão LLM e modelo." if isinstance(e, LLMConnectionError) else "Analisar falha na geração do LLM."]
             }
         except Exception as e:
-            logger.error(f"AQTAgent: Erro inesperado ao gerar relatório de qualidade: {e}")
+            logger.error(f"AgentAQT: Erro inesperado ao gerar relatório de qualidade: {e}")
             return {
                 "overall_status": "Error",
                 "total_tests": 0,

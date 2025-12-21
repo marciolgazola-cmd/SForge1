@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import datetime
+import os
 import random
 import pandas as pd
 import plotly.express as px
@@ -665,8 +666,8 @@ def code_viewer_page():
 
 
         generated_code_list = backend.get_generated_code_for_project(selected_project_id)
+        selected_code = None
         if generated_code_list:
-            # Dropdown para selecionar o arquivo de código
             code_files_map = {c.filename: c for c in generated_code_list}
             selected_code_file_name = st.selectbox("Selecione um arquivo de código:", list(code_files_map.keys()))
 
@@ -677,6 +678,121 @@ def code_viewer_page():
                 st.markdown(f"**Gerado em:** {selected_code.generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
         else:
             st.info("Nenhum código gerado para este projeto ainda.")
+
+        st.markdown("---")
+        st.subheader("🧪 Ambientes de Teste Isolados")
+        st.caption("Crie workspaces temporários para validar os snippets sem tocar no projeto.")
+
+        if selected_code:
+            if "show_prepare_ws_dialog" not in st.session_state:
+                st.session_state["show_prepare_ws_dialog"] = False
+            if "prepare_ws_request" not in st.session_state:
+                st.session_state["prepare_ws_request"] = None
+
+            if st.button(
+                "Preparar ambiente de teste para o arquivo selecionado",
+                key=f"btn_prepare_ws_{selected_code.id}",
+                use_container_width=True,
+            ):
+                st.session_state["show_prepare_ws_dialog"] = True
+
+            if st.session_state.get("show_prepare_ws_dialog"):
+                @st.dialog("Preparar ambiente de teste")
+                def prepare_ws_dialog():
+                    is_python = selected_code.language.lower() == "python"
+                    target_os = st.radio(
+                        "Sistema do cliente",
+                        options=["Windows", "Linux", "Mac"],
+                        horizontal=True,
+                    )
+                    build_executable = st.checkbox(
+                        "Gerar executavel para o cliente",
+                        value=is_python,
+                        disabled=not is_python,
+                        help="Disponivel apenas para Python.",
+                    )
+                    st.caption("O executavel precisa ser montado no mesmo sistema do cliente.")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("Gerar"):
+                            st.session_state["prepare_ws_request"] = {
+                                "target_os": target_os,
+                                "build_executable": bool(build_executable and is_python),
+                            }
+                            st.session_state["show_prepare_ws_dialog"] = False
+                            st.rerun()
+                    with col2:
+                        if st.button("Cancelar"):
+                            st.session_state["show_prepare_ws_dialog"] = False
+                            st.rerun()
+
+                prepare_ws_dialog()
+
+            if st.session_state.get("prepare_ws_request"):
+                request = st.session_state.pop("prepare_ws_request")
+                with st.spinner("Preparando diretórios e virtualenv..."):
+                    result = backend.prepare_test_workspace(
+                        selected_project_id,
+                        selected_code.id,
+                        target_os=request.get("target_os"),
+                        build_executable=request.get("build_executable", False),
+                    )
+                    if result.get("success"):
+                        st.success(f"Workspace criado em {result['workspace'].workspace_path}")
+                        st.code(
+                            "\n".join(
+                                cmd for cmd in [
+                                    result["commands"].get("cd"),
+                                    result["commands"].get("activate"),
+                                    result["commands"].get("install"),
+                                    result["commands"].get("run"),
+                                ] if cmd
+                            ),
+                            language="bash",
+                        )
+                        st.info("As instruções completas também foram salvas em README_TEST_ENV.md dentro do workspace.")
+
+                        executable_info = result.get("executable") or {}
+                        if executable_info:
+                            if executable_info.get("built"):
+                                st.success(f"Executavel gerado em {executable_info.get('output_path')}")
+                            else:
+                                st.warning(executable_info.get("message", "Executavel nao foi gerado."))
+                                docs_path = executable_info.get("build_docs_path")
+                                if docs_path:
+                                    st.info(f"Instrucoes de build em {docs_path}")
+                        st.rerun()
+                    else:
+                        st.error(result.get("message", "Erro ao preparar o workspace."))
+        else:
+            st.info("Selecione um snippet para habilitar a preparação automática do ambiente de testes.")
+
+        existing_workspaces = backend.get_test_workspaces(selected_project_id)
+        if existing_workspaces:
+            for ws in existing_workspaces:
+                st.markdown(f"**Arquivo:** {ws.filename}  |  **Workspace:** `{ws.workspace_path}`")
+                st.caption(f"Criado em {ws.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                req_path = os.path.join(ws.workspace_path, "requirements.txt")
+                command_lines = [f"cd {ws.workspace_path}"]
+                if ws.language.lower() == "python":
+                    command_lines.append("source .venv/bin/activate")
+                    if os.path.exists(req_path):
+                        command_lines.append("pip install -r requirements.txt")
+                    command_lines.append(f"python src/{ws.filename}")
+                else:
+                    command_lines.append("# Ajuste os comandos conforme a linguagem do snippet.")
+                st.code("\n".join(command_lines), language="bash")
+                if st.button("Remover ambiente", key=f"btn_delete_ws_{ws.id}", use_container_width=True):
+                    with st.spinner("Removendo workspace..."):
+                        result = backend.delete_test_workspace(ws.id)
+                    if result.get("success"):
+                        st.success("Workspace removido.")
+                        st.rerun()
+                    else:
+                        st.error(result.get("message", "Não foi possível remover o workspace."))
+        else:
+            st.info("Nenhum ambiente de teste criado para este projeto.")
     else:
         st.info("Selecione um projeto para visualizar o código.")
 

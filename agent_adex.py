@@ -1,10 +1,10 @@
-# adex_agent.py
+# agent_adex.py
 import logging
 import json
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,11 @@ class GeneratedCodeOutput(BaseModel):
     content: str = Field(description="O conteúdo do código gerado.")
     description: str = Field(description="Descrição do propósito do código.")
 
-class ADEXAgent:
+class AgentADEX:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('ADE-X') # Obtém o modelo para ADE-X
-        logger.info(f"ADEXAgent inicializado com modelo {self.model_name} e pronto para gerar código.")
+        logger.info(f"AgentADEX inicializado com modelo {self.model_name} e pronto para gerar código.")
 
     def _append_schema_instruction(self, messages: List[Dict[str, str]]):
         schema = GeneratedCodeOutput.model_json_schema()
@@ -61,9 +61,20 @@ class ADEXAgent:
         """
         Gera um snippet de código com base na descrição fornecida.
         """
+        quality_requirements = (
+            "Requisitos obrigatórios de qualidade:\n"
+            "- Produza código Python com indentação consistente e válido para `python -m py_compile` (sem IndentationError).\n"
+            "- Evite ValueError cuidando da validação de entrada e fornecendo valores padrão seguros.\n"
+            "- Não conecte diretamente a bancos PostgreSQL locais; use camadas simuladas (ex.: repositórios em memória) "
+            "ou mocks para persistência.\n"
+            "- Carregue configurações através de variáveis de ambiente e inclua no topo um comentário resumindo o conteúdo esperado do `.env`.\n"
+            "- Descreva no final como executar e testar o snippet (comandos `uvicorn`/`python`)."
+        )
+
         prompt = f"""
         Gere um snippet de código {code_description} para o projeto '{project_name}' do cliente '{client_name}'.
         O código deve ser funcional e seguir boas práticas.
+        {quality_requirements}
         Forneça o nome do arquivo, a linguagem, o conteúdo do código e uma breve descrição.
 
         Sua resposta deve ser um objeto JSON.
@@ -93,12 +104,11 @@ class ADEXAgent:
 
             normalized_output = self._normalize_generated_code(payload, code_description)
 
-            logger.info(f"ADEXAgent: Código gerado com sucesso usando {self.model_name} para '{project_name}'.")
+            logger.info(f"AgentADEX: Código gerado com sucesso usando {self.model_name} para '{project_name}'.")
             return normalized_output.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"ADEXAgent: Falha ao gerar código com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentADEX: Falha ao gerar código com o LLM {self.model_name}. Erro: {e}")
             return {"error": str(e), "message": f"Falha na geração de código: {e}", "filename": "error.txt", "language": "text", "content": "# Erro ao gerar código", "description": ""}
         except Exception as e:
-            logger.error(f"ADEXAgent: Erro inesperado ao gerar código: {e}")
+            logger.error(f"AgentADEX: Erro inesperado ao gerar código: {e}")
             return {"error": str(e), "message": f"Erro inesperado na geração de código: {e}", "filename": "error.txt", "language": "text", "content": "# Erro inesperado", "description": ""}
-

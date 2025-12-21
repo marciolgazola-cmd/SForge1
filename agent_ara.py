@@ -1,10 +1,10 @@
-# ara_agent.py
+# agent_ara.py
 import logging
 import json # Adicionado
 from typing import Dict, Any, List, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,11 @@ class ARAOutput(BaseModel):
     risks: List[str] = Field(description="Potenciais riscos e desafios.")
     estimated_effort: str = Field(description="Estimativa de esforço ou complexidade inicial.")
 
-class ARAAgent:
+class AgentARA:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('ARA') # Obtém o modelo para ARA
-        logger.info(f"ARAAgent inicializado com modelo {self.model_name} e pronto para analisar requisitos.")
+        logger.info(f"AgentARA inicializado com modelo {self.model_name} e pronto para analisar requisitos.")
 
     def analyze_requirements(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -51,11 +51,11 @@ class ARAAgent:
                 json_mode=True
             )
             response: ARAOutput = cast(ARAOutput, response_raw) # Cast para informar o Pylance
-            logger.info(f"ARAAgent: Requisitos analisados com sucesso usando {self.model_name}.")
+            logger.info(f"AgentARA: Requisitos analisados com sucesso usando {self.model_name}.")
             return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"ARAAgent: Falha ao analisar requisitos com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentARA: Falha ao analisar requisitos com o LLM {self.model_name}. Erro: {e}")
             return {"error": str(e), "message": f"Falha na análise de requisitos: {e}", "summary": "(Erro na análise)"}
         except Exception as e:
-            logger.error(f"ARAAgent: Erro inesperado ao analisar requisitos: {e}")
+            logger.error(f"AgentARA: Erro inesperado ao analisar requisitos: {e}")
             return {"error": str(e), "message": f"Erro inesperado na análise de requisitos: {e}", "summary": "(Erro inesperado)"}

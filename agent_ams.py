@@ -1,4 +1,4 @@
-# ams_agent.py
+# agent_ams.py
 import logging
 import json
 import random
@@ -6,7 +6,7 @@ import datetime
 from typing import Dict, Any, List, Optional, cast # Adicionado 'cast'
 from pydantic import BaseModel, Field
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,11 @@ class MonitoringSummaryOutput(BaseModel):
     recommendations: List[str] = Field(description="Recomendações para otimização ou resolução de problemas.")
     last_updated: str = Field(description="Timestamp da última atualização do resumo.")
 
-class AMSAgent:
+class AgentAMS:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('AMS') # Obtém o modelo para AMS
-        logger.info(f"AMSAgent inicializado com modelo {self.model_name} e pronto para monitorar sistemas.")
+        logger.info(f"AgentAMS inicializado com modelo {self.model_name} e pronto para monitorar sistemas.")
 
     def generate_monitoring_summary(self, project_id: Optional[str] = None, project_name: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -72,10 +72,10 @@ class AMSAgent:
                 json_mode=True
             )
             response: MonitoringSummaryOutput = cast(MonitoringSummaryOutput, response_raw) # Cast para informar o Pylance
-            logger.info(f"AMSAgent: Resumo de monitoramento gerado com sucesso usando {self.model_name} para {scope}.")
+            logger.info(f"AgentAMS: Resumo de monitoramento gerado com sucesso usando {self.model_name} para {scope}.")
             return response.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"AMSAgent: Falha ao gerar resumo de monitoramento com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentAMS: Falha ao gerar resumo de monitoramento com o LLM {self.model_name}. Erro: {e}")
             logger.warning(f"Erro ao gerar resumo de monitoramento com o LLM: {e}. Gerando dados padrão.")
             # Retorno de fallback consistente com a estrutura esperada
             return {
@@ -86,7 +86,7 @@ class AMSAgent:
                 "last_updated": datetime.datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"AMSAgent: Erro inesperado ao gerar resumo de monitoramento: {e}")
+            logger.error(f"AgentAMS: Erro inesperado ao gerar resumo de monitoramento: {e}")
             return {
                 "system_health": {"status": "Error", "message": f"Erro inesperado: {e}", "average_uptime": "N/A"},
                 "resource_usage": {"cpu_usage": "N/A", "memory_usage": "N/A", "network_traffic": "N/A"},

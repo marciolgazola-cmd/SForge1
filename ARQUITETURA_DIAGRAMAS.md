@@ -84,7 +84,7 @@
          ┌───────────────────────────┐
          │ CAMADA 2: ANP AGENT       │
          ├───────────────────────────┤
-         │ anp_agent.py              │
+         │ agent_anp.py              │
          │ linhas: 90-106            │
          │                           │
          │ ✓ generate_proposal()     │
@@ -472,7 +472,7 @@ SForge1/
 ├── MOAI.py                     (Backend - modificado)
 │   └─ create_proposal() - Fallback operator (or "")
 │
-├── anp_agent.py                (Agent - modificado)
+├── agent_anp.py                (Agent - modificado)
 │   └─ generate_proposal_content() - None → ""
 │
 ├── data_models.py              (Models - sem mudanças)

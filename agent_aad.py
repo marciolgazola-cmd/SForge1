@@ -1,10 +1,10 @@
-# aad_agent.py
+# agent_aad.py
 import logging
 import json # Adicionado
 from typing import Dict, Any, List
 from pydantic import BaseModel, Field, ValidationError
 from llm_simulator import LLMSimulator, LLMConnectionError, LLMGenerationError
-from agent_model_mapping import get_agent_model
+from agent_models import get_agent_model
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +15,11 @@ class AADSolutionOutput(BaseModel):
     modules: List[Dict[str, str]] = Field(description="Lista de módulos principais com suas responsabilidades.")
     diagram_description: str = Field(description="Descrição para gerar um diagrama de arquitetura.")
 
-class AADAgent:
+class AgentAAD:
     def __init__(self, llm_simulator: LLMSimulator):
         self.llm_simulator = llm_simulator
         self.model_name = get_agent_model('AAD') # Obtém o modelo para AAD
-        logger.info(f"AADAgent inicializado com modelo {self.model_name} e pronto para projetar soluções.")
+        logger.info(f"AgentAAD inicializado com modelo {self.model_name} e pronto para projetar soluções.")
 
     def _append_schema_instruction(self, messages: list[Dict[str, str]]):
         schema = AADSolutionOutput.model_json_schema()
@@ -86,7 +86,7 @@ class AADAgent:
                     "responsibility": self._normalize_text(desc, "Responsabilidade a definir")
                 })
         else:
-            logger.warning("AADAgent: 'modules' retornado em formato inesperado. Aplicando fallback.")
+            logger.warning("AgentAAD: 'modules' retornado em formato inesperado. Aplicando fallback.")
 
         if not normalized:
             normalized.append({"name": "Módulo Principal", "responsibility": "Definir responsabilidades."})
@@ -102,7 +102,7 @@ class AADAgent:
         try:
             return AADSolutionOutput(**normalized)
         except ValidationError as ve:
-            logger.error(f"AADAgent: Falha ao validar dados normalizados: {ve}")
+            logger.error(f"AgentAAD: Falha ao validar dados normalizados: {ve}")
             raise LLMGenerationError(f"Dados normalizados inválidos para design da solução: {ve}") from ve
 
     def design_solution(self, project_name: str, refined_requirements: Dict[str, Any]) -> Dict[str, Any]:
@@ -144,11 +144,11 @@ class AADAgent:
 
             normalized_output = self._normalize_solution_payload(payload)
 
-            logger.info(f"AADAgent: Solução projetada com sucesso usando {self.model_name}.")
+            logger.info(f"AgentAAD: Solução projetada com sucesso usando {self.model_name}.")
             return normalized_output.model_dump() # Converte o modelo Pydantic para dicionário
         except (LLMConnectionError, LLMGenerationError) as e:
-            logger.error(f"AADAgent: Falha ao projetar solução com o LLM {self.model_name}. Erro: {e}")
+            logger.error(f"AgentAAD: Falha ao projetar solução com o LLM {self.model_name}. Erro: {e}")
             return {"error": str(e), "message": f"Falha no design da solução: {e}", "architecture_overview": "(Erro no design)"}
         except Exception as e:
-            logger.error(f"AADAgent: Erro inesperado ao projetar solução: {e}")
+            logger.error(f"AgentAAD: Erro inesperado ao projetar solução: {e}")
             return {"error": str(e), "message": f"Erro inesperado no design da solução: {e}", "architecture_overview": "(Erro inesperado)"}

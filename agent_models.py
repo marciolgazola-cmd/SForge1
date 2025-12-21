@@ -1,4 +1,4 @@
-# agent_model_mapping.py
+# agent_models.py
 import logging
 from typing import Dict, Optional
 
@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 # Mapeamento dos agentes para os modelos LLM que devem utilizar
 # Certifique-se de que estes modelos estão disponíveis no seu servidor Ollama
-AGENT_MODEL_MAP: Dict[str, str] = {
+AGENT_MODELS: Dict[str, str] = {
     'ARA': 'llama3:8b-instruct-q8_0',
     # ALTERAÇÃO AQUI: Use o nome exato do modelo Mixtral que você tem
     'AAD': 'mixtral:8x7b-instruct-v0.1-q4_K_M', # <--- CORRIGIDO
@@ -28,7 +28,7 @@ def get_agent_model(agent_code: str) -> str:
     Retorna o nome do modelo LLM associado a um agente específico.
     Se o agente não estiver mapeado, retorna um modelo padrão e loga um aviso.
     """
-    model = AGENT_MODEL_MAP.get(agent_code)
+    model = AGENT_MODELS.get(agent_code)
     if not model:
         fallback_model = 'llama3:8b-instruct-q8_0'
         logger.warning(f"Modelo LLM não especificado para o agente '{agent_code}'. Usando o modelo padrão: '{fallback_model}'.")
